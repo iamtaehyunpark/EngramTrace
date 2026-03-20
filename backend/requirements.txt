@@ -1,0 +1,5 @@
+langchain
+langchain-google-genai
+fastapi
+uvicorn
+# other deps like networkx or pydantic
