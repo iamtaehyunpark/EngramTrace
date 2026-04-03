@@ -1,29 +1,21 @@
 """
 1. Physical Memory Orchestration (memory.py)
 This layer handles the "Body" of the system—the raw data and its spatial organization.
-
-AtomizeContext(text): Splits raw input into granular strings and wraps them 
-    into a strictly formatted HTML structure with unique IDs (p#p-1, etc.).
-
-GeneratePEmbeddings(html_selectors): Iterates through all <p> tags, extracts their full content, 
-    and calls the LLM to generate vectors.
-
-UpdateKBNode(selector_id, new_content): Specifically targets an HTML element by ID and replaces its inner text 
-    without breaking the document structure.
-
-CommitPhysicalMemory(): Synchronizes the in-memory BeautifulSoup object to knowledge_base.html and the vector list to p_embeddings.json.
 """
 
-import os
+import numpy as np
 import json
+import os
 from bs4 import BeautifulSoup
 import uuid
 import hashlib
+from src.llm.langchain_client import LangChainClient
 
 class MemoryManager:
-    def __init__(self, kb_path="src/memory/knowledge_base.html", p_embeddings_path="src/memory/p_embeddings.json"):
+    def __init__(self, kb_path="src/memory/knowledge_base.html", p_embeddings_path="src/memory/p_embeddings.json", working_page_path="src/memory/working_page.txt"):
         self.kb_path = kb_path
         self.p_embeddings_path = p_embeddings_path
+        self.working_page_path = working_page_path
         self.soup = self._load_or_create_kb()
 
 # INITILIZE KNOWLEDGE BASE
@@ -35,24 +27,57 @@ class MemoryManager:
                 return BeautifulSoup(f, "lxml")
         return BeautifulSoup("<html><body><main id='root'></main></body></html>", "lxml")
 
-    # atomize context
-    def atomizer(self, raw_text, llm_client):
+    def atomizer(self, llm_client, raw_text=None, compress=False):
         """
         Uses the LLM to semantically structure raw text into HTML.
+        If raw_text is None, it globally regenerates the KB (compressing it strictly if a Day Phase triggered!).
         """        
-        # Call your LangChain/Gemini client
-        generated_html = llm_client.generate_structured_html(raw_text)
+        if raw_text is None:
+            # Re-read existing HTML back into a dense string
+            kb_text = self.soup.get_text(separator='\n', strip=True)
+            generated_html = llm_client.generate_structured_html(kb_text, compress=compress)
+        else:
+            generated_html = llm_client.generate_structured_html(raw_text, compress=compress)
 
-        # Finalize atomization
-        finalized_html = self.finalize_atomization(generated_html)
+        # Drop the AI generation cleanly into active memory wrapper natively 
+        self.soup = BeautifulSoup(generated_html, "lxml")
         
-        # Update class state with the new HTML string
+        # Divert to the central node tracker securing validation loops inherently
+        return self._finalize_and_sync(llm_client)
+
+    def _finalize_and_sync(self, llm_client):
+        """
+        Synchronizes manual structural DOM edits backward onto the physical KB.
+        Assigns hashes to unknown/raw nodes and triggers vector rebuilding loops securely!
+        """
+        finalized_html = self.finalize_atomization(str(self.soup))
         self.soup = BeautifulSoup(finalized_html, "lxml")
-
-        # Validate and save
         self.save_kb(finalized_html)
-        
-        return [p['id'] for p in self.soup.find_all('p')] # return list of p tags
+
+        all_p_tags = [p['id'] for p in self.soup.find_all('p')]
+        self.sync_embeddings(llm_client, all_p_tags)
+        return all_p_tags
+
+    def rewrite(self, selector: str, updated_content: str):
+        """
+        Safely swaps interior content of an existing node, or splices new blocks globally.
+        Matches node via CSS selector path (e.g. 'html > body > p#p-123').
+        """
+        target = self.soup.select_one(selector)
+        if target:
+            target.clear()
+            target.append(BeautifulSoup(updated_content, "html.parser"))
+            return True
+            
+        # Upsert grafting: If this is a structural element entirely new to the graph, 
+        # seamlessly attach it to the primary graph tree root natively!
+        root_container = self.soup.find(id="root") or self.soup.find("body")
+        if root_container:
+            root_container.append(BeautifulSoup(updated_content, "html.parser"))
+            return True
+            
+        return False
+
 
     def _generate_deterministic_id(self, text: str) -> str:
         """
@@ -86,34 +111,19 @@ class MemoryManager:
 
 
 
-
-
     # get all p contents
     def get_all_p_contents(self):
         """Returns a map of {selector_id: text_content} for all p tags."""
         return {p['id']: p.get_text() for p in self.soup.find_all('p')}
     
-    # update p embeddings
-    def update_p_embeddings(self, llm_client, ids):
+    def sync_embeddings(self, llm_client, active_ids):
         """
-        Updates p embeddings for given ids.
-        pseudo code:
-        delete p_embeddings for given ids
-        add p_embeddings for given ids
-        delete_unused_p_embeddings()
-        """
-        self.delete_p_embeddings(ids)
-        self.add_p_embeddings(llm_client, ids)
-        self.delete_unused_p_embeddings()
-
-    # add p embeddings for given ids
-    def add_p_embeddings(self, llm_client, ids):
-        """
-        Iterates through the HTML, finds text for each <p>, 
-        generates vectors, and saves to p_embeddings.json.
+        Calculates difference matrices sequentially natively.
+        Extracts new vectors, sweeps obsolete arrays natively, and pushes memory explicitly once via single active dump limit.
         """
         from datetime import datetime
-
+        
+        # 1. Load active embedding JSON state fully mapped memory strictly ONE TIME
         embedding_map = {}
         if os.path.exists(self.p_embeddings_path):
             with open(self.p_embeddings_path, "r") as f:
@@ -121,150 +131,85 @@ class MemoryManager:
                     embedding_map = json.load(f)
                 except json.JSONDecodeError:
                     pass
+        
+        # 2. Prune globally dead selectors missing mapped keys
+        if isinstance(embedding_map, dict):
+            dead_nodes = [k for k in embedding_map.keys() if k not in active_ids]
+            for key in dead_nodes:
+                del embedding_map[key]
 
-        valid_ids = []
-        contents = []
-        selectors = []
-
-        for p_id in ids:
-            tag = self.soup.find(id=p_id)
-            if tag:
-                valid_ids.append(p_id)
-                contents.append(tag.get_text())
-
-                # selector that matches id in kb_path
-                parents = list(tag.parents)
-                path_parts = []
-                for p in reversed(parents):
-                    if p.name and p.name != '[document]':
-                        if p.get('id'):
-                            path_parts.append(f"{p.name}#{p.get('id')}")
-                        else:
-                            path_parts.append(p.name)
-                path_parts.append(f"p#{p_id}")
-                selectors.append(" > ".join(path_parts))
-
-        if valid_ids:
-            # Batch generate vectors for efficiency
-            vectors = llm_client.generate_embeddings(contents)
-
-            for i, p_id in enumerate(valid_ids):
+        # 3. Formulate physical string payloads array map bypassing unchanged roots 
+        new_nodes = []
+        new_contents = []
+        new_selectors = []
+        
+        for p_id in active_ids:
+            if p_id not in embedding_map:
+                tag = self.soup.find(id=p_id)
+                if tag:
+                    new_nodes.append(p_id)
+                    new_contents.append(tag.get_text())
+                    
+                    parents = list(tag.parents)
+                    path_parts = []
+                    for p in reversed(parents):
+                        if p.name and p.name != '[document]':
+                            if p.get('id'):
+                                path_parts.append(f"{p.name}#{p.get('id')}")
+                            else:
+                                path_parts.append(p.name)
+                    path_parts.append(f"p#{p_id}")
+                    new_selectors.append(" > ".join(path_parts))
+        
+        # 4. Synthesize vectors sequentially natively 
+        if new_nodes:
+            vectors = llm_client.generate_embeddings(new_contents)
+            for i, p_id in enumerate(new_nodes):
                 embedding_map[p_id] = {
-                    "selector": selectors[i],
-                    "vector": vectors[i],
+                    "selector": new_selectors[i],
+                    "vector": min(vectors[i], vectors[i]) if hasattr(vectors[i], '__iter__') else vectors[i], # Just safety fallback
                     "last_consolidated": datetime.now().isoformat()
                 }
+                embedding_map[p_id]["vector"] = vectors[i] # Set properly 
+        
+        # 5. Flush and persist mapped JSON precisely locally ONE time
+        os.makedirs(os.path.dirname(self.p_embeddings_path), exist_ok=True)
+        with open(self.p_embeddings_path, "w") as f:
+            json.dump(embedding_map, f, indent=4)
 
-            os.makedirs(os.path.dirname(self.p_embeddings_path), exist_ok=True)
-            with open(self.p_embeddings_path, "w") as f:
-                json.dump(embedding_map, f, indent=4)
-
-    # Delete p embeddings for given ids
-    def delete_p_embeddings(self, ids):
+    def semantic_search(self, query_vector, threshold=0.7):
         """
-        Deletes p embeddings for given ids.
-        pseudo code:
-        for(id in ids):
-            if(id is included in the p_embedding_path.json file):
-                delete the id from the p_embedding_path.json file
+        Compares query vector against all P-embeddings.
+        Returns: List of hit IDs that pass the threshold.
         """
         if not os.path.exists(self.p_embeddings_path):
-            return
-
-        with open(self.p_embeddings_path, "r") as f:
-            try:
-                embedding_map = json.load(f)
-            except json.JSONDecodeError:
-                return
-
-        for p_id in ids:
-            if p_id in embedding_map:
-                del embedding_map[p_id]
-
-        with open(self.p_embeddings_path, "w") as f:
-            json.dump(embedding_map, f, indent=4)    
-            
-    def delete_unused_p_embeddings(self):
-        """
-        Delete p_embeddings that are not used in the knowledge base.
-        """
-        existing_p_tags = self.soup.find_all('p')
-        existing_ids = [p['id'] for p in existing_p_tags]
+            return []
 
         with open(self.p_embeddings_path, "r") as f:
             embedding_map = json.load(f)
 
-        if not isinstance(embedding_map, dict):
-            print("Warning: p_embeddings.json is not a dictionary. Skipping deletion.")
-            return
+        if not embedding_map:
+            return []
 
-        keys_to_delete = [k for k in embedding_map.keys() if k not in existing_ids]
+        # 1. Prepare data for NumPy
+        ids = list(embedding_map.keys())
+        # Convert list of vectors to a 2D NumPy array
+        vectors = np.array([item['vector'] for item in embedding_map.values()], dtype='float32')
+        q_vec = np.array(query_vector, dtype='float32')
 
-        for key in keys_to_delete:
-            del embedding_map[key]
-
-        with open(self.p_embeddings_path, "w") as f:
-            json.dump(embedding_map, f, indent=4)
+        # 2. Vectorized Cosine Similarity Math
+        # similarity = (A . B) / (||A|| * ||B||)
+        dot_product = np.dot(vectors, q_vec)
+        norms = np.linalg.norm(vectors, axis=1) * np.linalg.norm(q_vec)
         
-        print(f"Deleted {len(keys_to_delete)} unused embeddings.")
+        # Avoid div/0 error by applying a small epsilon
+        norms = np.where(norms == 0, 1e-10, norms)
+        similarities = dot_product / norms
 
-
-
-"""
-2. The Ecphory Engine (ecphory.py or memory.py)
-This handles the "Retrieval" logic—turning a query into a focused "Working Page."
-
-SemanticSearch(query_vector): Performs a cosine similarity check against the p_embeddings.json 
-    and returns a list of "hit" selector IDs.
-
-ExtractSelectorPath(target_id): Backtracks from a specific ID to the root (e.g., html > body > section > p#p-42) 
-    to ensure hierarchical context.
-
-AssembleEngramTrace(hit_ids): A "Pruning" function that creates a temporary HTML file (The Working Page) 
-    containing only the activated nodes and their parent summaries.
-
-DeReferenceTrace(): Converts the HTML Working Page into a clean Markdown/Text format for the LLM to read during inference.
-"""
-
-import numpy as np
-import json
-
-def semantic_search(self, query_vector, threshold=0.7, top_n=5):
-    """
-    Compares query vector against all P-embeddings.
-    Returns: List of hit IDs that pass the threshold.
-    """
-    if not os.path.exists(self.embedding_path):
-        return []
-
-    with open(self.embedding_path, "r") as f:
-        embedding_map = json.load(f)
-
-    if not embedding_map:
-        return []
-
-    # 1. Prepare data for NumPy
-    ids = list(embedding_map.keys())
-    # Convert list of vectors to a 2D NumPy array
-    vectors = np.array([item['vector'] for item in embedding_map.values()], dtype='float32')
-    q_vec = np.array(query_vector, dtype='float32')
-
-    # 2. Vectorized Cosine Similarity Math
-    # similarity = (A . B) / (||A|| * ||B||)
-    dot_product = np.dot(vectors, q_vec)
-    norms = np.linalg.norm(vectors, axis=1) * np.linalg.norm(q_vec)
-    
-    # Avoid div/0 error by applying a small epsilon
-    norms = np.where(norms == 0, 1e-10, norms)
-    similarities = dot_product / norms
-
-    # 3. Filter by threshold and sort
-    hits = []
-    for i, score in enumerate(similarities):
-        if score >= threshold:
-            hits.append((ids[i], score))
-    
-    # Sort by highest similarity
-    hits.sort(key=lambda x: x[1], reverse=True)
-    
-    return [hit[0] for hit in hits[:top_n]]
+        # 3. Filter by threshold and sort
+        hits = []
+        for i, score in enumerate(similarities):
+            if score >= threshold:
+                hits.append((ids[i], score))
+        
+        return [hit[0] for hit in hits]
