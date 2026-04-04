@@ -63,6 +63,7 @@ class MemoryManager:
         Safely swaps interior content of an existing node, or splices new blocks globally.
         Matches node via CSS selector path (e.g. 'html > body > p#p-123').
         """
+        print(f"[MemoryManager.rewrite] Applying DOM mutation hook onto tag '{selector}'...")
         target = self.soup.select_one(selector)
         if target:
             target.clear()
@@ -121,6 +122,7 @@ class MemoryManager:
         Calculates difference matrices sequentially natively.
         Extracts new vectors, sweeps obsolete arrays natively, and pushes memory explicitly once via single active dump limit.
         """
+        print("[MemoryManager.sync_embeddings] Synchronizing graph node arrays hashing boundaries dynamically...")
         from datetime import datetime
         
         # 1. Load active embedding JSON state fully mapped memory strictly ONE TIME
@@ -182,6 +184,7 @@ class MemoryManager:
         Compares query vector against all P-embeddings.
         Returns: List of hit IDs that pass the threshold.
         """
+        print("[MemoryManager.semantic_search] Traversing dense node space globally...")
         if not os.path.exists(self.p_embeddings_path):
             return []
 

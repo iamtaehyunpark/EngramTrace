@@ -33,6 +33,7 @@ class EngramTrace:
         Returns a structurally minimized subset of the HTML Knowledge Base.
         Efficiently strings together the outer HTML of the nearest valid parents spanning the matched IDs.
         """
+        print("[EngramTrace] Abstracting parent-node vectors synthesizing structural Ecphory...")
         parents = set()
         for id in self.current_trace:
             tag = self.memory.soup.find(id=id) if hasattr(self, 'memory') else None
@@ -47,7 +48,7 @@ class EngramTrace:
         Compares new query vector against the average vector of the current stage.
         """
         if not self.q_vecs:
-            return 1.0  # No drift if the log is empty
+            return 0.0  # Drift if the log is empty
         
         avg_vec = np.mean(self.q_vecs, axis=0)
         norm_product = np.linalg.norm(avg_vec) * np.linalg.norm(query_vec)
@@ -87,7 +88,7 @@ class EngramTrace:
 
 
 class Brain:
-    def __init__(self, memory_manager: MemoryManager, llm_client, threshold=0.75):
+    def __init__(self, memory_manager: MemoryManager, llm_client, threshold=0.9):
         self.memory = memory_manager
         self.llm = llm_client
         self.threshold = threshold
@@ -114,6 +115,7 @@ class Brain:
         """
         Merges the ephemeral Stage Log natively via the LLM back into the HTML KB.
         """
+        print("[Brain.consolidate_and_transition] Merging Stage Log arrays into HTML Knowledge Base...")
         log = self.engram_trace._get_stage_log()
         if not log:
             return
@@ -131,6 +133,7 @@ class Brain:
             updated_parts = self.llm.synthesize_session(log, context_str)
 
         # 3. Merging with KB structurally
+        print("[Brain.consolidate_and_transition] Executing DOM mutations safely parsing new nodes...")
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(updated_parts, "lxml")
         
@@ -153,10 +156,13 @@ class Brain:
 
     def run_inference(self, query: str):
         """The main cognitive loop: Drift Check -> Retrieval -> Inference -> Buffer."""
+        print(f"\n[Brain.run_inference] Firing Cognitive Loop on: '{query[:20]}...'")
         q_vec = self.llm.generate_embeddings([query])[0]
         
         # 2. Drift Detection
+        print("[EngramTrace] Tracking stage deviation bounds (Drift Check)...")
         similarity = self.engram_trace._calculate_stage_drift(q_vec)
+        print("similarity", similarity)
         if similarity < self.threshold:
             last_stage_time = self.engram_trace._get_last_stage_time()
             # Day logic baseline

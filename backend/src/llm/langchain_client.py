@@ -7,7 +7,7 @@ class LangChainClient:
     def __init__(self):
         # Initializing Gemini 3.1 Flash-Lite
         self.model = ChatGoogleGenerativeAI(
-            model="gemini-flash-latest", # Use 1.5 Flash for the Lite-equivalent speed/efficiency
+            model="gemini-3.1-flash-lite-preview",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.1  # Low temperature is critical for structural consistency
         )
@@ -102,14 +102,15 @@ class LangChainClient:
 
     def generate_response(self, query: str, context: str, history: list) -> str:
         """
-        Generates a direct conversational response referencing the retrieved working page and recent short-term history.
+        Generates a standard cognitive response leveraging both deep structure and ephemeral loops safely.
         """
+        print("[LangChainClient.generate_response] Pinging Gemini 3.1 inference matrix...")
         history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in history] if isinstance(history, list) else history)
         
         system_prompt = """
             You are a helpful answering assistant acting as the inference engine for EngramTrace.
-            Use the provided Document Context (Long-term Memory) and Dialogue History (Short-term context) to answer the user's latest query accurately.
-            Rely purely on the retrieved context where possible. If the context doesn't have the answer, state that.
+            Use your expansive underlying knowledge to answer the user's latest query as thoroughly and accurately as possible.
+            You are provided with Document Context (Long-term Memory) and Dialogue History (Short-term context) to help inform your answer, but you are not restricted by it. Do not state that the context lacks information; just provide the best answer you can natively!
         """
         human_message = f"Long-Term Context:\n{context}\n\nRecent History:\n{history_str}\n\nUser Query: {query}"
         
