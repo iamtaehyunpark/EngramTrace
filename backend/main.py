@@ -95,12 +95,19 @@ async def chat_endpoint(request: Request):
     """Binds directly to Brain's Ecphory and Consolidation loop mapping outputs seamlessly to JSON."""
     body = await request.json()
     query = body.get("query", "")
+    threshold = body.get("threshold", None)
     
+    if threshold is not None:
+        try:
+            threshold = float(threshold)
+        except ValueError:
+            threshold = None
+            
     if not query:
         return {"response": "Error: Empty query."}
         
     try:
-        response = brain.run_inference(query)
+        response = brain.run_inference(query, threshold=threshold)
         return {"response": response}
     except Exception as e:
         return {"response": f"Runtime Exception: {str(e)}"}

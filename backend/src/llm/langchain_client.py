@@ -130,7 +130,22 @@ Active Stage Interaction Log (Supplementary Immediate Discussion Focus):
                 messages.append(AIMessage(content=item['response']))
                 
         messages.append(HumanMessage(content=query))
-        
-        response = self.model.invoke(messages)
-        
-        return response.content
+        try:
+            response = self.model.invoke(messages)
+            content = response.content
+            
+            # Normalize Gemini Multi-modal Output Blocks safely into standard continuous strings!
+            if isinstance(content, list):
+                text_blocks = []
+                for block in content:
+                    if isinstance(block, dict) and 'text' in block:
+                        text_blocks.append(block['text'])
+                    elif isinstance(block, str):
+                        text_blocks.append(block)
+                return "\n".join(text_blocks)
+            elif isinstance(content, dict) and 'text' in content:
+                return content['text']
+            
+            return str(content)
+        except Exception as e:
+            return f"Error: {str(e)}"

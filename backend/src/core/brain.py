@@ -84,7 +84,7 @@ class EngramTrace:
         if len(self.q_vecs) < 2:
             return 0.0  # Drift if the log is empty
         
-        avg_vec = np.mean(self.q_vecs, axis=0)
+        avg_vec = np.mean(self.q_vecs[-3:], axis=0) # only compare last 3 queries
         norm_product = np.linalg.norm(avg_vec) * np.linalg.norm(query_vec)
         if norm_product == 0: return 0
         return np.dot(avg_vec, query_vec) / norm_product
@@ -131,7 +131,7 @@ class EngramTrace:
 
 
 class Brain:
-    def __init__(self, memory_manager: MemoryManager, llm_client, threshold=0.9):
+    def __init__(self, memory_manager: MemoryManager, llm_client, threshold=0.95):
         self.memory = memory_manager
         self.llm = llm_client
         self.threshold = threshold
@@ -192,6 +192,17 @@ class Brain:
         
         for tag in container.find_all(recursive=False):
             if tag.name:
+                # PROTECT ROOT: If the LLM wraps the response in the global 'main#root' container,
+                # unwrap it and iterate over its children to prevent replacing the entire Knowledge Base WIKI!
+                if tag.name == 'main' and tag.get('id') == 'root':
+                    for sub_tag in tag.find_all(recursive=False):
+                        if sub_tag.name:
+                            if sub_tag.get('id'):
+                                self.memory.rewrite(f"{sub_tag.name}#{sub_tag.get('id')}", str(sub_tag))
+                            else:
+                                self.memory.rewrite(None, str(sub_tag))
+                    continue
+                    
                 if tag.get('id'):
                     selector = f"{tag.name}#{tag.get('id')}"
                     self.memory.rewrite(selector, str(tag))
@@ -205,11 +216,15 @@ class Brain:
         # 5. Transition log cycle
         self.engram_trace.start_new_stage()
 
-    def run_inference(self, query: str):
+    def run_inference(self, query: str, threshold: float = None):
         """The main cognitive loop: Drift Check -> Retrieval -> Inference -> Buffer."""
         print(f"\n[Brain.run_inference] Firing Cognitive Loop on: '{query[:20]}...'")
         q_vec = self.llm.generate_embeddings([query])[0]
         self.engram_trace.q_vecs.append(q_vec)
+        
+        # Resolve threshold natively allowing external parameter overrides without breaking Python scopes
+        active_threshold = threshold if threshold is not None else self.threshold
+        
         # Force Consolidation if certain amount of q-a pairs have been processed
         if len(self.engram_trace.q_vecs) > 10:
             print("Q-A pairs > 10. Consolidating Stage...")
@@ -219,7 +234,7 @@ class Brain:
             print("[EngramTrace] Tracking stage deviation bounds (Drift Check)...")
             similarity = self.engram_trace._calculate_stage_drift(q_vec)
             print("similarity", similarity)
-            if similarity < self.threshold:
+            if similarity < active_threshold:
                 last_stage_time = self.engram_trace._get_last_stage_time()
                 # Day logic baseline
                 if last_stage_time and (datetime.now() - last_stage_time).total_seconds() > 4000:

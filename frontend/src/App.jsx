@@ -53,6 +53,7 @@ function App() {
   
   const [messages, setMessages] = useState([]);
   const [inputVal, setInputVal] = useState('');
+  const [thresholdVal, setThresholdVal] = useState(0.95);
   const [isLoading, setIsLoading] = useState(false);
   const [serverLogs, setServerLogs] = useState([]);
   const chatEndRef = useRef(null);
@@ -139,7 +140,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query: text })
+        body: JSON.stringify({ query: text, threshold: Number(thresholdVal) })
       });
 
       const data = await response.json();
@@ -166,6 +167,18 @@ function App() {
       <div className="header-nav">
         <h2>EngramTrace Orchestrator</h2>
         <div className="nav-buttons">
+          <div style={{ display: 'flex', alignItems: 'center', marginRight: '1rem', background: '#2c2c2c', padding: '0.4rem 0.6rem', borderRadius: '4px' }}>
+            <label style={{ fontSize: '0.8rem', marginRight: '0.5rem', color: '#ccc' }}>Drift Threshold:</label>
+            <input 
+              type="number" 
+              step="0.01" 
+              min="0.0" 
+              max="1.0" 
+              value={thresholdVal}
+              onChange={e => setThresholdVal(e.target.value)}
+              style={{ width: '60px', padding: '0.2rem', border: '1px solid #444', borderRadius: '4px', background: '#1e1e1e', color: '#fff', textAlign: 'center' }}
+            />
+          </div>
           <button 
             className="nav-btn wipe-btn"
             style={{ backgroundColor: '#ff4444', color: 'white', marginRight: '1rem' }}
@@ -201,7 +214,7 @@ function App() {
               }`}>
                 <b>{msg.role === 'user' ? 'COMMAND:' : msg.role === 'error' ? 'ERROR:' : 'ENGRAM:'}</b>
                 <br />
-                {msg.text.split('\\n').map((line, i) => (
+                {(typeof msg.text === 'string' ? msg.text : JSON.stringify(msg.text)).split('\\n').map((line, i) => (
                   <span key={i}>{line}<br/></span>
                 ))}
               </div>

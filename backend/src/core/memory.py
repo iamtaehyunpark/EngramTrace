@@ -81,7 +81,18 @@ class MemoryManager:
         Matches node via CSS selector path (e.g. 'html > body > p#p-123').
         """
         print(f"[MemoryManager.rewrite] Applying DOM mutation hook onto tag '{selector}'...")
-        target = self.soup.select_one(selector) if selector else None
+        
+        target = None
+        if selector:
+            if '#' in selector and len(selector.split('#')) == 2:
+                # Direct lookup natively to bypass BeautifulSoup CSS parser breaking on invalid selector dots/spaces!
+                tag_name, tag_id = selector.split('#')
+                target = self.soup.find(tag_name, id=tag_id)
+            else:
+                try:
+                    target = self.soup.select_one(selector)
+                except Exception:
+                    pass
         
         # Parse the new block explicitly 
         new_tag_source = BeautifulSoup(updated_content, "html.parser")
