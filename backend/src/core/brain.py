@@ -7,13 +7,13 @@ from src.core.memory import MemoryManager
 class EngramTrace:
     def __init__(self):
         self.current_trace = set() # retrieved selectors in this stage
-        self.q_vecs = [] # query vectors in this stage
+        self.qa_vecs = [] # qa vectors in this stage
         self.stage_log_path = "src/memory/current_stage_log.json"
         self.session_log_path = "src/memory/session_log.json"
 
     def wipe(self):
         self.current_trace = set()
-        self.q_vecs = []
+        self.qa_vecs = []
         
         # Unconditionally write empty arrays so UI never hangs waiting for boot files
         os.makedirs(os.path.dirname(self.stage_log_path), exist_ok=True)
@@ -81,15 +81,20 @@ class EngramTrace:
         Detects if the user is still on the same 'Stage' (topic).
         Compares new query vector against the average vector of the current stage.
         """
-        if len(self.q_vecs) < 2:
-            return 0.0  # Drift if the log is empty --> handled by run_inference()
-        
-        avg_vec = np.mean(self.q_vecs[-3:-1], axis=0) # only compare last 2 queries excluding the latest
+        if len(self.qa_vecs) < 1:
+            session_log = self._get_session_log()
+            if session_log and "last_qa_vec" in session_log[-1]:
+                avg_vec = np.array(session_log[-1]["last_qa_vec"])
+            else:
+                return 0.0  # Drift if the log is empty --> handled by run_inference()
+        else:
+            avg_vec = np.mean(self.qa_vecs, axis=0) 
+            
         norm_product = np.linalg.norm(avg_vec) * np.linalg.norm(query_vec)
         if norm_product == 0: return 0
         return np.dot(avg_vec, query_vec) / norm_product
 
-    def BufferQAPair(self, query, response):
+    def BufferQAPair(self, query, response, qa_vec=None):
         """
         Appends the latest interaction to the Stage Log and permanent Session Log.
         """
@@ -106,8 +111,15 @@ class EngramTrace:
             json.dump(stage, f)
             
         # 2. Permanent Session Log (Continual History)
+        session_qa_block = dict(qa_block)
+        if qa_vec is not None:
+            session_qa_block["last_qa_vec"] = qa_vec if isinstance(qa_vec, list) else getattr(qa_vec, "tolist", lambda: qa_vec)()
+            
         session = self._get_session_log() if os.path.exists(self.session_log_path) else []
-        session.append(qa_block)
+        if session and "last_qa_vec" in session[-1]:
+            del session[-1]["last_qa_vec"]
+            
+        session.append(session_qa_block)
         with open(self.session_log_path, "w") as f:
             json.dump(session, f)
 
@@ -120,7 +132,7 @@ class EngramTrace:
             self._archive_stage(log)
         self._clear_stage_log()
         self.current_trace = set()
-        self.q_vecs = []
+        self.qa_vecs = []
 
     def _archive_stage(self, log):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -153,9 +165,9 @@ class Brain:
             # Phase 3: Drift Persistency. Reconstruct active vector memory from file!
             try:
                 log = self.engram_trace._get_stage_log()
-                active_queries = [item['query'] for item in log]
-                if active_queries:
-                    self.engram_trace.q_vecs = self.llm.generate_embeddings(active_queries)
+                active_qa = [f"Q: {item['query']}\nA: {item['response']}" for item in log[-3:]]
+                if active_qa:
+                    self.engram_trace.qa_vecs = self.llm.generate_embeddings(active_qa)
             except Exception:
                 pass
 
@@ -220,18 +232,20 @@ class Brain:
         """The main cognitive loop: Drift Check -> Retrieval -> Inference -> Buffer."""
         print(f"\n[Brain.run_inference] Firing Cognitive Loop on: '{query[:20]}...'")
         q_vec = self.llm.generate_embeddings([query])[0]
-        self.engram_trace.q_vecs.append(q_vec)
         
         # Resolve threshold natively allowing external parameter overrides without breaking Python scopes
         active_threshold = threshold if threshold is not None else self.threshold
         active_semantic_threshold = semantic_threshold if semantic_threshold is not None else self.threshold
         
         # Force Consolidation if certain amount of q-a pairs have been processed
-        if len(self.engram_trace.q_vecs) > 10:
-            print("Q-A pairs > 10. Consolidating Stage...")
+        stage_log = self.engram_trace._get_stage_log()
+        session_log = self.engram_trace._get_session_log()
+        
+        if len(stage_log) >= 10:
+            print("Q-A pairs >= 10. Consolidating Stage...")
             self.consolidate_and_transition()
-        elif len(self.engram_trace.q_vecs) == 1:
-            print("Q-A pairs == 1. Skip drift check")
+        elif len(stage_log) == 0 and not (session_log and "last_qa_vec" in session_log[-1]):
+            print("Stage log empty and no prior session history. Skip drift check")
         else:
             # 2. Drift Detection
             print("[EngramTrace] Tracking stage deviation bounds (Drift Check)...")
@@ -266,7 +280,14 @@ class Brain:
             session_history=session_history
         )
 
-        # 5. Sensory Buffering
-        self.engram_trace.BufferQAPair(query, response)
+        # 5. Semantic Generation of qa-pair and Buffering
+        qa_text = f"Q: {query}\nA: {response}"
+        qa_vec = self.llm.generate_embeddings([qa_text])[0]
+        
+        self.engram_trace.qa_vecs.append(qa_vec)
+        if len(self.engram_trace.qa_vecs) > 3:
+            self.engram_trace.qa_vecs.pop(0)
+
+        self.engram_trace.BufferQAPair(query, response, qa_vec=qa_vec)
         
         return response
