@@ -80,6 +80,22 @@ function App() {
     fetchHistory();
   }, []);
 
+  const handleWipeMemory = async () => {
+    if (!window.confirm("Are you sure you want to completely wipe all logs, vectors, and the Knowledge Base?")) return;
+    try {
+      const res = await fetch('/memory', { method: 'DELETE' });
+      if (res.ok) {
+        setMessages([{ role: 'system', text: '[System Engine Memory Wiped. Virtual Graph matrix successfully initialized...]' }]);
+        setServerLogs([]);
+        if (currentView === 'data') {
+           window.location.reload();
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -150,6 +166,14 @@ function App() {
       <div className="header-nav">
         <h2>EngramTrace Orchestrator</h2>
         <div className="nav-buttons">
+          <button 
+            className="nav-btn wipe-btn"
+            style={{ backgroundColor: '#ff4444', color: 'white', marginRight: '1rem' }}
+            onClick={handleWipeMemory}
+          >
+            Clear Total Memory
+          </button>
+          
           <button 
             className={`nav-btn ${currentView === 'chat' ? 'active' : ''}`}
             onClick={() => setCurrentView('chat')}

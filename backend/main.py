@@ -79,6 +79,16 @@ async def clear_logs():
     """Gracefully resets the global tracker array immediately upon new initialization queries!"""
     log_capture.logs = []
     return {"status": "cleared"}
+    
+@app.delete("/memory")
+async def clear_memory():
+    """Wipes the entire KB, stage log, session log, and embedding dictionary."""
+    try:
+        brain.memory.wipe()
+        brain.engram_trace.wipe()
+        return {"status": "success", "message": "Memory fully wiped."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.post("/chat")
 async def chat_endpoint(request: Request):

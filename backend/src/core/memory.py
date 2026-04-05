@@ -18,6 +18,16 @@ class MemoryManager:
         self.working_page_path = working_page_path
         self.soup = self._load_or_create_kb()
 
+    def wipe(self):
+        """Wipes the physical HTML Graph and Embeddings JSON."""
+        if os.path.exists(self.kb_path):
+            os.remove(self.kb_path)
+        if os.path.exists(self.p_embeddings_path):
+            os.remove(self.p_embeddings_path)
+            
+        # Reinitialize skeleton
+        self.soup = self._load_or_create_kb()
+
 # INITILIZE KNOWLEDGE BASE
     # initialize knowledge base
     def _load_or_create_kb(self):

@@ -6,11 +6,30 @@ from src.core.memory import MemoryManager
 
 class EngramTrace:
     def __init__(self):
-        self.current_trace = {} # retrieved selectors in this stage
+        self.current_trace = set() # retrieved selectors in this stage
         self.q_vecs = [] # query vectors in this stage
         self.stage_log_path = "src/memory/current_stage_log.json"
         self.session_log_path = "src/memory/session_log.json"
 
+    def wipe(self):
+        self.current_trace = set()
+        self.q_vecs = []
+        
+        # Unconditionally write empty arrays so UI never hangs waiting for boot files
+        os.makedirs(os.path.dirname(self.stage_log_path), exist_ok=True)
+        with open(self.stage_log_path, "w") as f:
+            json.dump([], f)
+            
+        with open(self.session_log_path, "w") as f:
+            json.dump([], f)
+            
+        # Completely purge archived historical drift stage files
+        history_dir = "src/memory/stage_history"
+        if os.path.exists(history_dir):
+            for file in os.listdir(history_dir):
+                if file.endswith(".json"):
+                    os.remove(os.path.join(history_dir, file))
+                    
     def _clear_stage_log(self):
         with open(self.stage_log_path, "w") as f:
             json.dump([], f)
