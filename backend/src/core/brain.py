@@ -143,10 +143,11 @@ class EngramTrace:
 
 
 class Brain:
-    def __init__(self, memory_manager: MemoryManager, llm_client, threshold=0.9):
+    def __init__(self, memory_manager: MemoryManager, llm_client, stage_threshold=0.83, search_threshold=0.75):
         self.memory = memory_manager
         self.llm = llm_client
-        self.threshold = threshold
+        self.stage_threshold = stage_threshold
+        self.search_threshold = search_threshold
         self.engram_trace = EngramTrace()
         
         # Explicit scope hook for context fetching 
@@ -228,14 +229,14 @@ class Brain:
         # 5. Transition log cycle
         self.engram_trace.start_new_stage()
 
-    def run_inference(self, query: str, threshold: float = None, semantic_threshold: float = None):
+    def run_inference(self, query: str, stage_threshold: float = None, search_threshold: float = None):
         """The main cognitive loop: Drift Check -> Retrieval -> Inference -> Buffer."""
         print(f"\n[Brain.run_inference] Firing Cognitive Loop on: '{query[:20]}...'")
         q_vec = self.llm.generate_embeddings([query])[0]
         
         # Resolve threshold natively allowing external parameter overrides without breaking Python scopes
-        active_threshold = threshold if threshold is not None else self.threshold
-        active_semantic_threshold = semantic_threshold if semantic_threshold is not None else self.threshold
+        active_stage_threshold = stage_threshold if stage_threshold is not None else self.stage_threshold
+        active_search_threshold = search_threshold if search_threshold is not None else self.search_threshold
         
         # Force Consolidation if certain amount of q-a pairs have been processed
         stage_log = self.engram_trace._get_stage_log()
@@ -251,13 +252,14 @@ class Brain:
             print("[EngramTrace] Tracking stage deviation bounds (Drift Check)...")
             similarity = self.engram_trace._calculate_stage_drift(q_vec)
             print("similarity", similarity)
-            if similarity < active_threshold:
+            if similarity < active_stage_threshold:
                 last_stage_time = self.engram_trace._get_last_stage_time()
                 # Day logic baseline
                 if last_stage_time and (datetime.now() - last_stage_time).total_seconds() > 4000:
                     print("day changed")
+                    if len(stage_log) > 0:
+                        self.consolidate_and_transition()
                     self.memory.atomizer(self.llm, compress=True)
-                    self.engram_trace.start_new_stage()
                 else:
                     print(f"Topic Drift Detected ({similarity:.2f}). Consolidating Stage...")
                     self.consolidate_and_transition()
@@ -265,7 +267,7 @@ class Brain:
 
         # 3. Ecphory
         # Safely extract hits directly from vectorized embeddings lookup
-        hit_ids = self.memory.semantic_search(q_vec, threshold=active_semantic_threshold)
+        hit_ids = self.memory.semantic_search(q_vec, threshold=active_search_threshold)
         self.engram_trace.current_trace.update(hit_ids)
         
         working_context = self.engram_trace._get_stage_context()
