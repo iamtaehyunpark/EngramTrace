@@ -11,7 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
-backend/src/memory/knowledge_base.html
+*.html
 *.json
 
 # Editor directories and files

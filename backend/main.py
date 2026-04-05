@@ -109,18 +109,28 @@ async def state_endpoint():
         # Parse running JSON structures tracking immediate logs
         stage_log = []
         log_path = "src/memory/current_stage_log.json"
+        import json
         if os.path.exists(log_path):
             with open(log_path, "r", encoding='utf-8') as f:
-                import json
                 try:
                     stage_log = json.load(f)
                 except ValueError:
                     stage_log = []
+                    
+        session_log = []
+        session_path = "src/memory/session_log.json"
+        if os.path.exists(session_path):
+            with open(session_path, "r", encoding='utf-8') as f:
+                try:
+                    session_log = json.load(f)
+                except ValueError:
+                    session_log = []
 
         # Return JSON payload dynamically reflecting immediate system configurations
         return {
             "knowledge_base": kb_content,
             "stage_log": stage_log,
+            "session_log": session_log,
             "engram_trace": brain.engram_trace.current_trace
         }
     except Exception as e:

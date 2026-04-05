@@ -9,14 +9,29 @@ class EngramTrace:
         self.current_trace = {} # retrieved selectors in this stage
         self.q_vecs = [] # query vectors in this stage
         self.stage_log_path = "src/memory/current_stage_log.json"
+        self.session_log_path = "src/memory/session_log.json"
 
     def _clear_stage_log(self):
         with open(self.stage_log_path, "w") as f:
             json.dump([], f)
 
     def _get_stage_log(self):
-        with open(self.stage_log_path, "r") as f:
-            return json.load(f)
+        try:
+            if not os.path.exists(self.stage_log_path):
+                return []
+            with open(self.stage_log_path, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            return []
+            
+    def _get_session_log(self):
+        try:
+            if not os.path.exists(self.session_log_path):
+                return []
+            with open(self.session_log_path, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            return []
     
     def _get_last_stage_time(self):
         try:
@@ -47,7 +62,7 @@ class EngramTrace:
         Detects if the user is still on the same 'Stage' (topic).
         Compares new query vector against the average vector of the current stage.
         """
-        if not self.q_vecs:
+        if len(self.q_vecs) < 2:
             return 0.0  # Drift if the log is empty
         
         avg_vec = np.mean(self.q_vecs, axis=0)
@@ -57,16 +72,25 @@ class EngramTrace:
 
     def BufferQAPair(self, query, response):
         """
-        Appends the latest interaction to the Stage Log.
+        Appends the latest interaction to the Stage Log and permanent Session Log.
         """
-        log = self._get_stage_log() if os.path.exists(self.stage_log_path) else []
-        log.append({
+        qa_block = {
             "query": query,
             "response": response,
             "timestamp": datetime.now().isoformat()
-        })
+        }
+        
+        # 1. Ephemeral Stage Log (Wiped on drift)
+        stage = self._get_stage_log() if os.path.exists(self.stage_log_path) else []
+        stage.append(qa_block)
         with open(self.stage_log_path, "w") as f:
-            json.dump(log, f)
+            json.dump(stage, f)
+            
+        # 2. Permanent Session Log (Continual History)
+        session = self._get_session_log() if os.path.exists(self.session_log_path) else []
+        session.append(qa_block)
+        with open(self.session_log_path, "w") as f:
+            json.dump(session, f)
 
     def start_new_stage(self):
         """
@@ -101,6 +125,11 @@ class Brain:
         if not os.path.exists(self.engram_trace.stage_log_path):
             os.makedirs(os.path.dirname(self.engram_trace.stage_log_path), exist_ok=True)
             self.engram_trace._clear_stage_log()
+            
+        if not os.path.exists(self.engram_trace.session_log_path):
+            os.makedirs(os.path.dirname(self.engram_trace.session_log_path), exist_ok=True)
+            with open(self.engram_trace.session_log_path, "w") as f:
+                json.dump([], f)
         else:
             # Phase 3: Drift Persistency. Reconstruct active vector memory from file!
             try:
@@ -124,12 +153,14 @@ class Brain:
         for p_id in self.engram_trace.current_trace:
             tag = self.memory.soup.find(id=p_id)
             if tag and tag.parent:
-                parents.add(tag.parent) 
-
+                parents.add(tag.parent)
+            else:
+                parents.add(tag)
+        
         if len(parents) == 0:
             updated_parts = self.llm.synthesize_session(log, self.memory.soup.get_text())
         else:
-            context_str = "\n".join([p.decode_contents() for p in parents])
+            context_str = "\n".join([str(p) for p in parents])
             updated_parts = self.llm.synthesize_session(log, context_str)
 
         # 3. Merging with KB structurally
@@ -137,16 +168,17 @@ class Brain:
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(updated_parts, "lxml")
         
-        for tag in soup.find_all(recursive=False):
-            if tag.name in ["html", "body"]:
-                for child in tag.find_all(recursive=False):
-                    selector = f"{child.name}"
-                    if child.get('id'): selector += f"#{child.get('id')}"
-                    self.memory.rewrite(selector, str(child))
-            else:
-                selector = f"{tag.name}"
-                if tag.get('id'): selector += f"#{tag.get('id')}"
-                self.memory.rewrite(selector, str(tag))
+        # lxml parser automatically wraps in html/body. Find the actual content entries natively.
+        container = soup.find('body') if soup.find('body') else soup
+        
+        for tag in container.find_all(recursive=False):
+            if tag.name:
+                if tag.get('id'):
+                    selector = f"{tag.name}#{tag.get('id')}"
+                    self.memory.rewrite(selector, str(tag))
+                else:
+                    # If there's no ID bound to the highest tag organically, pass None to force safe graft upserts 
+                    self.memory.rewrite(None, str(tag))
         
         # 4. Process all physical rewrite mutations over physical index syncing
         self.memory._finalize_and_sync(self.llm)
@@ -158,23 +190,27 @@ class Brain:
         """The main cognitive loop: Drift Check -> Retrieval -> Inference -> Buffer."""
         print(f"\n[Brain.run_inference] Firing Cognitive Loop on: '{query[:20]}...'")
         q_vec = self.llm.generate_embeddings([query])[0]
-        
-        # 2. Drift Detection
-        print("[EngramTrace] Tracking stage deviation bounds (Drift Check)...")
-        similarity = self.engram_trace._calculate_stage_drift(q_vec)
-        print("similarity", similarity)
-        if similarity < self.threshold:
-            last_stage_time = self.engram_trace._get_last_stage_time()
-            # Day logic baseline
-            if last_stage_time and (datetime.now() - last_stage_time).total_seconds() > 4000:
-                print("day changed")
-                self.memory.atomizer(self.llm, compress=True)
-                self.engram_trace.start_new_stage()
-            else:
-                print(f"Topic Drift Detected ({similarity:.2f}). Consolidating Stage...")
-                self.consolidate_and_transition()
-
         self.engram_trace.q_vecs.append(q_vec)
+        # Force Consolidation if certain amount of q-a pairs have been processed
+        if len(self.engram_trace.q_vecs) > 10:
+            print("Q-A pairs > 10. Consolidating Stage...")
+            self.consolidate_and_transition()
+        else:
+            # 2. Drift Detection
+            print("[EngramTrace] Tracking stage deviation bounds (Drift Check)...")
+            similarity = self.engram_trace._calculate_stage_drift(q_vec)
+            print("similarity", similarity)
+            if similarity < self.threshold:
+                last_stage_time = self.engram_trace._get_last_stage_time()
+                # Day logic baseline
+                if last_stage_time and (datetime.now() - last_stage_time).total_seconds() > 4000:
+                    print("day changed")
+                    self.memory.atomizer(self.llm, compress=True)
+                    self.engram_trace.start_new_stage()
+                else:
+                    print(f"Topic Drift Detected ({similarity:.2f}). Consolidating Stage...")
+                    self.consolidate_and_transition()
+
 
         # 3. Ecphory
         # Safely extract hits directly from vectorized embeddings lookup
@@ -183,12 +219,14 @@ class Brain:
         
         working_context = self.engram_trace._get_stage_context()
         stage_history = self.engram_trace._get_stage_log()
+        session_history = self.engram_trace._get_session_log()[-5:] # Safely cap context memory to the latest 5 structural dialogue branches!
         
         # 4. Standard Response 
         response = self.llm.generate_response(
             query=query, 
             context=working_context, 
-            history=stage_history
+            history=stage_history,
+            session_history=session_history
         )
 
         # 5. Sensory Buffering

@@ -82,13 +82,14 @@ class LangChainClient:
         history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in log_history] if isinstance(log_history, list) else log_history)
         
         system_prompt = """
-            You are summarizing a short-term conversational session and integrating it into Long-Term HTML knowledge.
+            You are a backend graph compiler integrating a short-term conversational session into Long-Term HTML knowledge arrays.
             
             RULES:
-            1. Read the Original HTML and the conversation Dialogue.
-            2. Merge any new, valid knowledge from the dialogue directly into the original HTML structures.
-            3. Output ONLY the updated HTML. Do not output conversational pre-text.
-            4. Retain all semantic parent structure mapping (if it's in a section, keep it in a section).
+            1. You are provided with specific Original HTML structural blocks (parent tags) and a Dialogue History.
+            2. If new knowledge fits into the provided Original HTML blocks, rewrite the ENTIRE block incorporating the new knowledge. You MUST preserve the exact original ID attributes of the top-level parent tags.
+            3. If the new knowledge is completely unrelated to the provided blocks, create a completely NEW standalone HTML parent tag (like <section> or <article>) for it.
+            4. Do not attempt to build a perfectly valid full <html> or <body> document. It is perfectly fine to output disconnected, fragmented HTML tags. They will be grafted structurally by the engine later.
+            5. Output ONLY the raw updated HTML tags. Do not output conversational pre-text or markdown borders.
         """
         human_message = f"Original HTML context:\n{context_html}\n\nDialogue History to apply:\n{history_str}"
         return self._get_clean_response(system_prompt, human_message)
@@ -100,20 +101,36 @@ class LangChainClient:
         """
         return self.embedding_model.embed_documents(text)
 
-    def generate_response(self, query: str, context: str, history: list) -> str:
+    def generate_response(self, query: str, context: str, history: list, session_history: list = None) -> str:
         """
         Generates a standard cognitive response leveraging both deep structure and ephemeral loops safely.
         """
         print("[LangChainClient.generate_response] Pinging Gemini 3.1 inference matrix...")
-        history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in history] if isinstance(history, list) else history)
+        from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
         
-        system_prompt = """
-            You are a helpful answering assistant acting as the inference engine for EngramTrace.
-            Use your expansive underlying knowledge to answer the user's latest query as thoroughly and accurately as possible.
-            You are provided with Document Context (Long-term Memory) and Dialogue History (Short-term context) to help inform your answer, but you are not restricted by it. Do not state that the context lacks information; just provide the best answer you can natively!
-        """
-        human_message = f"Long-Term Context:\n{context}\n\nRecent History:\n{history_str}\n\nUser Query: {query}"
+        history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in history]) if history else "None"
         
-        # We don't want to strip HTML markdown logic for normal responses, so we will manually invoke
-        # However, getting clean response doesn't hurt plain text.
-        return self._get_clean_response(system_prompt, human_message)
+        system_prompt = f"""You are a helpful, intelligent AI assistant.
+Answer the user's questions utilizing your expansive knowledge freely.
+The 'Retrieved Knowledge Base Context' below is just a helpful hint from your long-term memory graph; 
+if the user asks something outside of it, you should still answer it using your own general knowledge.
+
+Retrieved Knowledge Base Context (Topical Hints):
+{context}
+
+Active Stage Interaction Log (Supplementary Immediate Discussion Focus):
+{history_str}
+"""
+        messages = [SystemMessage(content=system_prompt)]
+        
+        # Sequentially map the active continuous session status to prevent topical amnesia 
+        if session_history:
+            for item in session_history:
+                messages.append(HumanMessage(content=item['query']))
+                messages.append(AIMessage(content=item['response']))
+                
+        messages.append(HumanMessage(content=query))
+        
+        response = self.model.invoke(messages)
+        
+        return response.content

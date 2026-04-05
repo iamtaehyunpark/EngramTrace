@@ -25,7 +25,14 @@ class MemoryManager:
         if os.path.exists(self.kb_path):
             with open(self.kb_path, "r", encoding="utf-8") as f:
                 return BeautifulSoup(f, "lxml")
-        return BeautifulSoup("<html><body><main id='root'></main></body></html>", "lxml")
+                
+        # If it doesn't exist, create it physically right now
+        default_html = "<html><body><main id='root'></main></body></html>"
+        os.makedirs(os.path.dirname(self.kb_path), exist_ok=True)
+        with open(self.kb_path, "w", encoding="utf-8") as f:
+            f.write(default_html)
+            
+        return BeautifulSoup(default_html, "lxml")
 
     def atomizer(self, llm_client, raw_text=None, compress=False):
         """
@@ -64,17 +71,25 @@ class MemoryManager:
         Matches node via CSS selector path (e.g. 'html > body > p#p-123').
         """
         print(f"[MemoryManager.rewrite] Applying DOM mutation hook onto tag '{selector}'...")
-        target = self.soup.select_one(selector)
-        if target:
-            target.clear()
-            target.append(BeautifulSoup(updated_content, "html.parser"))
+        target = self.soup.select_one(selector) if selector else None
+        
+        # Parse the new block explicitly 
+        new_tag_source = BeautifulSoup(updated_content, "html.parser")
+        
+        # Ensure we don't accidentally graft a whole text-doc. Extract the active node:
+        new_nodes = [n for n in new_tag_source.children if n.name]
+        
+        if target and new_nodes:
+            # Replace the whole parent natively
+            target.replace_with(new_nodes[0])
             return True
             
         # Upsert grafting: If this is a structural element entirely new to the graph, 
         # seamlessly attach it to the primary graph tree root natively!
         root_container = self.soup.find(id="root") or self.soup.find("body")
-        if root_container:
-            root_container.append(BeautifulSoup(updated_content, "html.parser"))
+        if root_container and new_nodes:
+            for node in new_nodes:
+                root_container.append(node)
             return True
             
         return False

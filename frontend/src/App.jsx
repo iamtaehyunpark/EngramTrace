@@ -51,13 +51,34 @@ function DataInspector() {
 function App() {
   const [currentView, setCurrentView] = useState('chat'); // 'chat' or 'data'
   
-  const [messages, setMessages] = useState([
-    { role: 'system', text: '[System Engine Online. Virtual Graph matrix successfully initialized...]' }
-  ]);
+  const [messages, setMessages] = useState([]);
   const [inputVal, setInputVal] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [serverLogs, setServerLogs] = useState([]);
   const chatEndRef = useRef(null);
+
+  // Rehydrate historic dialogue memory array organically!
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch('/state');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.session_log && data.session_log.length > 0) {
+            const rehydrated = [];
+            data.session_log.forEach(log => {
+              rehydrated.push({ role: 'user', text: log.query });
+              rehydrated.push({ role: 'bot', text: log.response });
+            });
+            setMessages(rehydrated);
+          } else {
+             setMessages([{ role: 'system', text: '[System Engine Online. Virtual Graph matrix successfully initialized...]' }]);
+          }
+        }
+      } catch (err) {}
+    };
+    fetchHistory();
+  }, []);
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
