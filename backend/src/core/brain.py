@@ -81,7 +81,7 @@ class EngramTrace:
         Detects if the user is still on the same 'Stage' (topic).
         Compares new query vector against the average vector of the current stage.
         """
-        if len(self.q_vecs) < 1:
+        if len(self.q_vecs) < 2:
             return 0.0  # Drift if the log is empty
         
         avg_vec = np.mean(self.q_vecs[-4:-1], axis=0) # only compare last 3 queries excluding the latest
