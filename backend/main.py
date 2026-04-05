@@ -112,6 +112,16 @@ async def chat_endpoint(request: Request):
     except Exception as e:
         return {"response": f"Runtime Exception: {str(e)}"}
 
+@app.post("/day-change")
+async def force_day_change():
+    """Forces an immediate atomization of the Knowledge Base and resets the Day Stage cycle natively."""
+    try:
+        brain.memory.atomizer(brain.llm, compress=True)
+        brain.engram_trace.start_new_stage()
+        return {"status": "success", "message": "Day change forced successfully."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.get("/state")
 async def state_endpoint():
     """Formally exposes read-only access scanning current structural memory footprints."""

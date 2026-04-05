@@ -97,6 +97,18 @@ function App() {
     }
   };
 
+  const handleForceDayChange = async () => {
+    if (!window.confirm("Are you sure you want to force a day transition? This will trigger total atomizer compression!")) return;
+    try {
+      const res = await fetch('/day-change', { method: 'POST' });
+      if (res.ok) {
+        setMessages(prev => [...prev, { role: 'system', text: '[System Control: Day Cycle Advanced. Commencing Atomizer compression sequence...]' }]);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -185,6 +197,14 @@ function App() {
             onClick={handleWipeMemory}
           >
             Clear Total Memory
+          </button>
+          
+          <button 
+            className="nav-btn"
+            style={{ backgroundColor: '#ff9800', color: 'white', marginRight: '1rem' }}
+            onClick={handleForceDayChange}
+          >
+            Force Day Change
           </button>
           
           <button 
