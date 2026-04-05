@@ -38,24 +38,26 @@ class LangChainClient:
         """
         if compress:
             system_prompt = """
-                Your task is to aggressively format and compress a large temporal Knowledge Base into a tightly organized, summarized HTML document.
+                Your task is to properly restructure and organize a large temporal Knowledge Base into a well-structured HTML document.
                 RULES:
-                1. Chronologically compress, summarize, or discard completely outdated or irrelevant conversational noise explicitly.
-                2. Consolidate logic tightly utilizing hierarchical headers and standard tags (<p>, <h1>, <h2>).
-                3. Do NOT add artificial IDs, custom data-attributes, or forced semantic containers.
-                4. Return only the highly optimized, clean HTML markup.
+                1. Focus on restructuring and logical grouping using hierarchical headers (<h1>, <h2>) rather than aggressively summarizing or deleting content.
+                2. Retain the majority of the original text to preserve the semantic flow and the chronological evolution of ideas.
+                3. If there are conflicting statements or evolving facts in the context, give priority and more weight to the latest information.
+                4. Do NOT add artificial IDs, custom data-attributes, or forced semantic containers.
+                5. Return only the clean HTML markup.
             """
-            human_message = f"Compress and format the following textual history into synthesized HTML:\n\n{raw_text}"
+            human_message = f"Restructure and format the following textual history into a logical HTML document, preserving textual flow:\n\n{raw_text}"
         else:
             system_prompt = """
-                Your task is to transform raw, unstructured text into standard HTML.
+                Your task is to restructure raw, unstructured text into standard HTML while preserving its semantic flow.
                 RULES:
-                1. Convert the text into a clean, normal HTML page.
-                2. Organize the content naturally using standard HTML tags (e.g., <p>, <h1>, <h2>, <ul>, <li>).
-                3. Do NOT add artificial IDs, custom data-attributes, or forced semantic grouping containers unless it's natural.
-                4. Return only the HTML markup.
+                1. Convert the text into a clean, well-organized HTML page maintaining almost all original content.
+                2. Organize the content logically using standard HTML tags (e.g., <p>, <h1>, <h2>, <ul>, <li>) to show temporal or topic progression.
+                3. Treat the latest context as the source of truth if contradictions exist.
+                4. Do NOT add artificial IDs, custom data-attributes, or forced semantic grouping containers unless it's natural.
+                5. Return only the HTML markup.
             """
-            human_message = f"Convert the following text into normal HTML formatting:\n\n{raw_text}"
+            human_message = f"Format the following text into structured HTML preserving original semantic depth:\n\n{raw_text}"
             
         return self._get_clean_response(system_prompt, human_message)
 

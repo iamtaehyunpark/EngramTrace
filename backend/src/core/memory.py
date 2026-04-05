@@ -218,7 +218,7 @@ class MemoryManager:
         with open(self.p_embeddings_path, "w") as f:
             json.dump(embedding_map, f, indent=4)
 
-    def semantic_search(self, query_vector, threshold=0.9):
+    def semantic_search(self, query_vector, threshold=0.7):
         """
         Compares query vector against all P-embeddings.
         Returns: List of hit IDs that pass the threshold.

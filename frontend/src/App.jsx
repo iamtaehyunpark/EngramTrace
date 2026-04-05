@@ -53,7 +53,8 @@ function App() {
   
   const [messages, setMessages] = useState([]);
   const [inputVal, setInputVal] = useState('');
-  const [thresholdVal, setThresholdVal] = useState(0.95);
+  const [thresholdVal, setThresholdVal] = useState(0.90);
+  const [semanticThresholdVal, setSemanticThresholdVal] = useState(0.70);
   const [isLoading, setIsLoading] = useState(false);
   const [serverLogs, setServerLogs] = useState([]);
   const chatEndRef = useRef(null);
@@ -152,7 +153,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query: text, threshold: Number(thresholdVal) })
+        body: JSON.stringify({ query: text, threshold: Number(thresholdVal), semantic_threshold: Number(semanticThresholdVal) })
       });
 
       const data = await response.json();
@@ -180,7 +181,7 @@ function App() {
         <h2>EngramTrace Orchestrator</h2>
         <div className="nav-buttons">
           <div style={{ display: 'flex', alignItems: 'center', marginRight: '1rem', background: '#2c2c2c', padding: '0.4rem 0.6rem', borderRadius: '4px' }}>
-            <label style={{ fontSize: '0.8rem', marginRight: '0.5rem', color: '#ccc' }}>Drift Threshold:</label>
+            <label style={{ fontSize: '0.8rem', marginRight: '0.5rem', color: '#ccc' }}>Drift Thresh:</label>
             <input 
               type="number" 
               step="0.01" 
@@ -188,7 +189,19 @@ function App() {
               max="1.0" 
               value={thresholdVal}
               onChange={e => setThresholdVal(e.target.value)}
-              style={{ width: '60px', padding: '0.2rem', border: '1px solid #444', borderRadius: '4px', background: '#1e1e1e', color: '#fff', textAlign: 'center' }}
+              style={{ width: '55px', padding: '0.2rem', border: '1px solid #444', borderRadius: '4px', background: '#1e1e1e', color: '#fff', textAlign: 'center' }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', marginRight: '1rem', background: '#2c2c2c', padding: '0.4rem 0.6rem', borderRadius: '4px' }}>
+            <label style={{ fontSize: '0.8rem', marginRight: '0.5rem', color: '#ccc' }}>Search Thresh:</label>
+            <input 
+              type="number" 
+              step="0.01" 
+              min="0.0" 
+              max="1.0" 
+              value={semanticThresholdVal}
+              onChange={e => setSemanticThresholdVal(e.target.value)}
+              style={{ width: '55px', padding: '0.2rem', border: '1px solid #444', borderRadius: '4px', background: '#1e1e1e', color: '#fff', textAlign: 'center' }}
             />
           </div>
           <button 

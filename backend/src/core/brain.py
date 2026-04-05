@@ -216,7 +216,7 @@ class Brain:
         # 5. Transition log cycle
         self.engram_trace.start_new_stage()
 
-    def run_inference(self, query: str, threshold: float = None):
+    def run_inference(self, query: str, threshold: float = None, semantic_threshold: float = None):
         """The main cognitive loop: Drift Check -> Retrieval -> Inference -> Buffer."""
         print(f"\n[Brain.run_inference] Firing Cognitive Loop on: '{query[:20]}...'")
         q_vec = self.llm.generate_embeddings([query])[0]
@@ -224,6 +224,7 @@ class Brain:
         
         # Resolve threshold natively allowing external parameter overrides without breaking Python scopes
         active_threshold = threshold if threshold is not None else self.threshold
+        active_semantic_threshold = semantic_threshold if semantic_threshold is not None else self.threshold
         
         # Force Consolidation if certain amount of q-a pairs have been processed
         if len(self.engram_trace.q_vecs) > 10:
@@ -250,7 +251,7 @@ class Brain:
 
         # 3. Ecphory
         # Safely extract hits directly from vectorized embeddings lookup
-        hit_ids = self.memory.semantic_search(q_vec, threshold=active_threshold)
+        hit_ids = self.memory.semantic_search(q_vec, threshold=active_semantic_threshold)
         self.engram_trace.current_trace.update(hit_ids)
         
         working_context = self.engram_trace._get_stage_context()
