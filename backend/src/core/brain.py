@@ -82,9 +82,9 @@ class EngramTrace:
         Compares new query vector against the average vector of the current stage.
         """
         if len(self.q_vecs) < 2:
-            return 0.0  # Drift if the log is empty
+            return 0.0  # Drift if the log is empty --> handled by run_inference()
         
-        avg_vec = np.mean(self.q_vecs[-4:-1], axis=0) # only compare last 3 queries excluding the latest
+        avg_vec = np.mean(self.q_vecs[-3:-1], axis=0) # only compare last 2 queries excluding the latest
         norm_product = np.linalg.norm(avg_vec) * np.linalg.norm(query_vec)
         if norm_product == 0: return 0
         return np.dot(avg_vec, query_vec) / norm_product
@@ -131,7 +131,7 @@ class EngramTrace:
 
 
 class Brain:
-    def __init__(self, memory_manager: MemoryManager, llm_client, threshold=0.95):
+    def __init__(self, memory_manager: MemoryManager, llm_client, threshold=0.9):
         self.memory = memory_manager
         self.llm = llm_client
         self.threshold = threshold
@@ -229,6 +229,8 @@ class Brain:
         if len(self.engram_trace.q_vecs) > 10:
             print("Q-A pairs > 10. Consolidating Stage...")
             self.consolidate_and_transition()
+        elif len(self.engram_trace.q_vecs) == 1:
+            print("Q-A pairs == 1. Skip drift check")
         else:
             # 2. Drift Detection
             print("[EngramTrace] Tracking stage deviation bounds (Drift Check)...")
@@ -248,7 +250,7 @@ class Brain:
 
         # 3. Ecphory
         # Safely extract hits directly from vectorized embeddings lookup
-        hit_ids = self.memory.semantic_search(q_vec)
+        hit_ids = self.memory.semantic_search(q_vec, threshold=active_threshold)
         self.engram_trace.current_trace.update(hit_ids)
         
         working_context = self.engram_trace._get_stage_context()

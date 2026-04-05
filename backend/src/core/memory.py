@@ -50,9 +50,10 @@ class MemoryManager:
         If raw_text is None, it globally regenerates the KB (compressing it strictly if a Day Phase triggered!).
         """        
         if raw_text is None:
-            # Re-read existing HTML back into a dense string
-            kb_text = self.soup.get_text(separator='\n', strip=True)
-            generated_html = llm_client.generate_structured_html(kb_text, compress=compress)
+            # Re-read existing HTML back into a formatted raw string conserving hard semantic root depths!
+            root = self.soup.find(id="root") or self.soup.find("body") or self.soup
+            kb_html = str(root)
+            generated_html = llm_client.generate_structured_html(kb_html, compress=compress)
         else:
             generated_html = llm_client.generate_structured_html(raw_text, compress=compress)
 
@@ -71,9 +72,9 @@ class MemoryManager:
         self.soup = BeautifulSoup(finalized_html, "lxml")
         self.save_kb(finalized_html)
 
-        all_p_tags = [p['id'] for p in self.soup.find_all('p')]
-        self.sync_embeddings(llm_client, all_p_tags)
-        return all_p_tags
+        all_active_ids = [p['id'] for p in self.soup.find_all('p') if p.get('id') and p.get_text(strip=True)]
+        self.sync_embeddings(llm_client, all_active_ids)
+        return all_active_ids
 
     def rewrite(self, selector: str, updated_content: str):
         """
@@ -116,27 +117,29 @@ class MemoryManager:
         return False
 
 
-    def _generate_deterministic_id(self, text: str) -> str:
+    def _generate_deterministic_id(self, text: str, prefix: str = 'p') -> str:
         """
         Generates a stable ID based on the text content.
         If the text is the same, the ID will always be the same.
         """
         # Create a SHA-256 hash of the text
         hash_digest = hashlib.sha256(text.encode('utf-8')).hexdigest()
-        # Use the first 12 characters for a clean 'p-XXXX' ID
-        return f"p-{hash_digest[:12]}"
+        # Use the first 12 characters for a clean localized physical ID
+        return f"{prefix}-{hash_digest[:12]}"
 
     def finalize_atomization(self, generated_html: str):
         """
-        Processes the AI's HTML, ensuring every <p> has a stable, manual ID.
+        Processes the AI's HTML, ensuring every node has a stable, manual ID organically!
         """
         soup = BeautifulSoup(generated_html, "lxml")
         
-        # Find all <p> tags that don't have an 'id' attribute
-        for p_tag in soup.find_all('p', id=False):
-            # Generate ID from the content itself
-            stable_id = self._generate_deterministic_id(p_tag.get_text())
-            p_tag['id'] = stable_id
+        structural_tags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'article', 'section', 'div', 'main', 'span', 'b', 'strong', 'i', 'em', 'u']
+        # Find all tags that don't have an 'id' attribute natively mapped
+        for tag in soup.find_all(structural_tags, id=False):
+            if tag.get_text(strip=True):
+                # Generate ID from the content itself binding explicitly onto its tag wrapper name prefix
+                stable_id = self._generate_deterministic_id(tag.get_text(), prefix=tag.name)
+                tag['id'] = stable_id
             
         return soup.prettify()
 
@@ -215,7 +218,7 @@ class MemoryManager:
         with open(self.p_embeddings_path, "w") as f:
             json.dump(embedding_map, f, indent=4)
 
-    def semantic_search(self, query_vector, threshold=0.7):
+    def semantic_search(self, query_vector, threshold=0.9):
         """
         Compares query vector against all P-embeddings.
         Returns: List of hit IDs that pass the threshold.
