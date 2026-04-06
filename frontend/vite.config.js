@@ -25,6 +25,10 @@ export default defineConfig({
       '/day-change': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+      },
+      '/kb': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
       }
     }
   }

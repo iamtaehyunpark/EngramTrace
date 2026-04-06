@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import './App.css';
+import KBStudio from './KBStudio';
 
-function DataInspector() {
+function LogsView() {
   const [sysState, setSysState] = useState(null);
   const [error, setError] = useState(null);
 
@@ -23,33 +24,27 @@ function DataInspector() {
   if (!sysState) return <div className="loading-msg">Connecting to Orchestrator matrices...</div>;
 
   return (
-    <div className="data-view">
+    <div className="logs-view">
       <div className="data-panel">
-        <h3>1. Active Engram Trace (Ecphory Working Page)</h3>
-        <p><i>The isolated vectors dynamically serving as the short-term context anchor locally:</i></p>
+        <h3>Active Engram Trace (Ecphory Working Page)</h3>
         <pre>{JSON.stringify(sysState.engram_trace, null, 2)}</pre>
       </div>
       
       <div className="data-panel">
-        <h3>2. Temporal Buffer (Stage Log)</h3>
-        <p><i>The continuous conversational loop dictating drift threshold continuity triggers:</i></p>
+        <h3>Temporal Buffer (Stage Log)</h3>
         <pre>{JSON.stringify(sysState.stage_log, null, 2)}</pre>
       </div>
 
       <div className="data-panel">
-        <h3>3. Long-Term HTML Structure (Knowledge Base)</h3>
-        <p><i>The final synthesized DOM block architecture resting in physical storage natively:</i></p>
-        <div 
-          className="kb-rendered-preview" 
-          dangerouslySetInnerHTML={{ __html: sysState.knowledge_base }} 
-        />
+        <h3>Session Log (Permanent History)</h3>
+        <pre>{JSON.stringify(sysState.session_log, null, 2)}</pre>
       </div>
     </div>
   );
 }
 
 function App() {
-  const [currentView, setCurrentView] = useState('chat'); // 'chat' or 'data'
+  const [currentView, setCurrentView] = useState('chat'); // 'chat' | 'kb' | 'logs'
   
   const [messages, setMessages] = useState([]);
   const [inputVal, setInputVal] = useState('');
@@ -89,7 +84,7 @@ function App() {
       if (res.ok) {
         setMessages([{ role: 'system', text: '[System Engine Memory Wiped. Virtual Graph matrix successfully initialized...]' }]);
         setServerLogs([]);
-        if (currentView === 'data') {
+        if (currentView !== 'chat') {
            window.location.reload();
         }
       }
@@ -123,18 +118,15 @@ function App() {
     const text = inputVal.trim();
     if (!text) return;
 
-    // Push User Command
     setMessages(prev => [...prev, { role: 'user', text: text }]);
     setInputVal('');
     setServerLogs([]);
     setIsLoading(true);
 
     try {
-      // Clear logs on backend before start natively ensuring accurate reading frames
       await fetch('/logs', { method: 'DELETE' });
     } catch (e) { /* ignore cleanup errors */ }
 
-    // Start fetching logs smoothly tracking updates globally over intervals!
     const pollLogs = setInterval(async () => {
       try {
         const res = await fetch('/logs');
@@ -142,23 +134,17 @@ function App() {
           const data = await res.json();
           setServerLogs(data.logs || []);
         }
-      } catch (err) {
-        // fail silently avoiding console span bloats
-      }
+      } catch (err) {}
     }, 400);
 
     try {
       const response = await fetch('/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: text, threshold: Number(thresholdVal), semantic_threshold: Number(semanticThresholdVal) })
       });
 
       const data = await response.json();
-      
-      // Conclude log polling correctly
       clearInterval(pollLogs);
       
       if(response.ok) {
@@ -166,7 +152,6 @@ function App() {
       } else {
         throw new Error(data.response || 'Network error');
       }
-
     } catch (err) {
       clearInterval(pollLogs);
       setMessages(prev => [...prev, { role: 'error', text: 'CRITICAL: Extrapolator Bridge Dropped (API check required)' }]);
@@ -178,66 +163,45 @@ function App() {
   return (
     <div className="container">
       <div className="header-nav">
-        <h2>EngramTrace Orchestrator</h2>
+        <h2>EngramTrace</h2>
         <div className="nav-buttons">
-          <div style={{ display: 'flex', alignItems: 'center', marginRight: '1rem', background: '#2c2c2c', padding: '0.4rem 0.6rem', borderRadius: '4px' }}>
-            <label style={{ fontSize: '0.8rem', marginRight: '0.5rem', color: '#ccc' }}>Drift Thresh:</label>
+          <div className="threshold-group">
+            <label>Drift</label>
             <input 
-              type="number" 
-              step="0.01" 
-              min="0.0" 
-              max="1.0" 
+              type="number" step="0.01" min="0.0" max="1.0" 
               value={thresholdVal}
               onChange={e => setThresholdVal(e.target.value)}
-              style={{ width: '55px', padding: '0.2rem', border: '1px solid #444', borderRadius: '4px', background: '#1e1e1e', color: '#fff', textAlign: 'center' }}
             />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', marginRight: '1rem', background: '#2c2c2c', padding: '0.4rem 0.6rem', borderRadius: '4px' }}>
-            <label style={{ fontSize: '0.8rem', marginRight: '0.5rem', color: '#ccc' }}>Search Thresh:</label>
+          <div className="threshold-group">
+            <label>Search</label>
             <input 
-              type="number" 
-              step="0.01" 
-              min="0.0" 
-              max="1.0" 
+              type="number" step="0.01" min="0.0" max="1.0" 
               value={semanticThresholdVal}
               onChange={e => setSemanticThresholdVal(e.target.value)}
-              style={{ width: '55px', padding: '0.2rem', border: '1px solid #444', borderRadius: '4px', background: '#1e1e1e', color: '#fff', textAlign: 'center' }}
             />
           </div>
-          <button 
-            className="nav-btn wipe-btn"
-            style={{ backgroundColor: '#ff4444', color: 'white', marginRight: '1rem' }}
-            onClick={handleWipeMemory}
-          >
-            Clear Total Memory
-          </button>
-          
-          <button 
-            className="nav-btn"
-            style={{ backgroundColor: '#ff9800', color: 'white', marginRight: '1rem' }}
-            onClick={handleForceDayChange}
-          >
-            Force Day Change
-          </button>
-          
+          <button className="nav-btn danger-btn" onClick={handleWipeMemory}>Wipe</button>
+          <button className="nav-btn warning-btn" onClick={handleForceDayChange}>Day Change</button>
+          <div className="nav-divider" />
           <button 
             className={`nav-btn ${currentView === 'chat' ? 'active' : ''}`}
             onClick={() => setCurrentView('chat')}
-          >
-            Chat Console
-          </button>
+          >Chat</button>
           <button 
-            className={`nav-btn ${currentView === 'data' ? 'active' : ''}`}
-            onClick={() => setCurrentView('data')}
-          >
-            Data Inspector
-          </button>
+            className={`nav-btn ${currentView === 'kb' ? 'active' : ''}`}
+            onClick={() => setCurrentView('kb')}
+          >KB Studio</button>
+          <button 
+            className={`nav-btn ${currentView === 'logs' ? 'active' : ''}`}
+            onClick={() => setCurrentView('logs')}
+          >Logs</button>
         </div>
       </div>
       
-      {currentView === 'data' ? (
-        <DataInspector />
-      ) : (
+      {currentView === 'kb' && <KBStudio />}
+      {currentView === 'logs' && <LogsView />}
+      {currentView === 'chat' && (
         <>
           <div className="chat-box">
             {messages.map((msg, index) => (
@@ -268,13 +232,12 @@ function App() {
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
               onKeyDown={(e) => {
-                // Submit on Enter (without Shift)
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   handleSubmit();
                 }
               }}
-              placeholder="Send a multi-line query to the Engram Graph... (Shift+Enter for newline)" 
+              placeholder="Send a query to the Engram Graph... (Shift+Enter for newline)" 
               disabled={isLoading}
               autoComplete="off"
               rows={3}

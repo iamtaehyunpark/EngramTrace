@@ -132,6 +132,21 @@ async def force_day_change():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@app.put("/kb")
+async def save_kb(request: Request):
+    """Accepts raw HTML from the frontend editor, re-parses, finalizes IDs, and rebuilds embeddings."""
+    from bs4 import BeautifulSoup
+    body = await request.json()
+    html_content = body.get("html", "")
+    if not html_content.strip():
+        return {"status": "error", "message": "Empty HTML content"}
+    try:
+        brain.memory.soup = BeautifulSoup(html_content, "lxml")
+        brain.memory._finalize_and_sync(brain.llm, hierarchical=True)
+        return {"status": "success", "message": "KB saved and embeddings rebuilt."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.get("/state")
 async def state_endpoint():
     """Formally exposes read-only access scanning current structural memory footprints."""
