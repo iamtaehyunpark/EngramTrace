@@ -7,14 +7,15 @@ import numpy as np
 import json
 import os
 from bs4 import BeautifulSoup
-import uuid
 import hashlib
-from src.llm.langchain_client import LangChainClient
 
 class MemoryManager:
+    STRUCTURAL_TAGS = {'body', 'main', 'section', 'article', 'div'}
+
     def __init__(self, kb_path="src/memory/knowledge_base.html", p_embeddings_path="src/memory/p_embeddings.json", working_page_path="src/memory/working_page.txt"):
         self.kb_path = kb_path
         self.p_embeddings_path = p_embeddings_path
+        self.structural_embeddings_path = "src/memory/structural_embeddings.json"
         self.working_page_path = working_page_path
         self.soup = self._load_or_create_kb()
 
@@ -24,6 +25,8 @@ class MemoryManager:
             os.remove(self.kb_path)
         if os.path.exists(self.p_embeddings_path):
             os.remove(self.p_embeddings_path)
+        if os.path.exists(self.structural_embeddings_path):
+            os.remove(self.structural_embeddings_path)
             
         # Reinitialize skeleton
         self.soup = self._load_or_create_kb()
@@ -61,19 +64,26 @@ class MemoryManager:
         self.soup = BeautifulSoup(generated_html, "lxml")
         
         # Divert to the central node tracker securing validation loops inherently
-        return self._finalize_and_sync(llm_client)
+        return self._finalize_and_sync(llm_client, hierarchical=True)
 
-    def _finalize_and_sync(self, llm_client):
+    def _finalize_and_sync(self, llm_client, hierarchical=False):
         """
         Synchronizes manual structural DOM edits backward onto the physical KB.
         Assigns hashes to unknown/raw nodes and triggers vector rebuilding loops securely!
+        hierarchical=True triggers full top-down structural embedding rebuild (atomizer/day change).
+        hierarchical=False uses cached structural vectors for lightweight stage updates.
         """
         finalized_html = self.finalize_atomization(str(self.soup))
         self.soup = BeautifulSoup(finalized_html, "lxml")
         self.save_kb(finalized_html)
 
         all_active_ids = [p['id'] for p in self.soup.find_all('p') if p.get('id') and p.get_text(strip=True)]
-        self.sync_embeddings(llm_client, all_active_ids)
+
+        if hierarchical:
+            self.sync_embeddings_hierarchical(llm_client, all_active_ids)
+        else:
+            self.sync_embeddings(llm_client, all_active_ids)
+
         return all_active_ids
 
     def rewrite(self, selector: str, updated_content: str):
@@ -156,15 +166,144 @@ class MemoryManager:
         """Returns a map of {selector_id: text_content} for all p tags."""
         return {p['id']: p.get_text() for p in self.soup.find_all('p')}
     
+    def _get_structural_lineage(self, tag):
+        """
+        Returns the top-down list of structural ancestor tags (filtered to STRUCTURAL_TAGS)
+        for a given tag, excluding the tag itself.
+        """
+        ancestors = []
+        for parent in tag.parents:
+            if parent.name and parent.name in self.STRUCTURAL_TAGS and parent.get('id'):
+                ancestors.append(parent)
+        ancestors.reverse()  # top-down order
+        return ancestors
+
+    def _build_selector_path(self, tag):
+        """Builds the CSS selector path string for a tag."""
+        parents = list(tag.parents)
+        path_parts = []
+        for p in reversed(parents):
+            if p.name and p.name != '[document]':
+                if p.get('id'):
+                    path_parts.append(f"{p.name}#{p.get('id')}")
+                else:
+                    path_parts.append(p.name)
+        path_parts.append(f"{tag.name}#{tag.get('id')}")
+        return " > ".join(path_parts)
+
+    def sync_embeddings_hierarchical(self, llm_client, active_ids):
+        """
+        Full top-down hierarchical embedding rebuild.
+        Called only during atomizer (init + day change).
+        Batch-embeds all unique structural ancestors + p tags in one LLM call,
+        then sums vectors top-down using memoization.
+        """
+        print("[MemoryManager.sync_embeddings_hierarchical] Building hierarchical structural vectors...")
+        from datetime import datetime
+
+        structural_cache = {}  # tag_id -> summed vector (numpy array)
+        texts_to_embed = {}    # tag_id -> text (ordered dict for batch)
+        lineage_cache = {}     # tag_id -> list of ancestor tags (memoized)
+
+        def get_lineage(tag):
+            tid = tag.get('id')
+            if tid not in lineage_cache:
+                lineage_cache[tid] = self._get_structural_lineage(tag)
+            return lineage_cache[tid]
+
+        # Phase 1: Scan all p tags, collect all unique nodes needing raw embeddings
+        p_tags = []
+        for p_id in active_ids:
+            tag = self.soup.find(id=p_id)
+            if not tag:
+                continue
+            p_tags.append((p_id, tag))
+            lineage = get_lineage(tag)
+
+            # Collect structural ancestors
+            for ancestor in lineage:
+                aid = ancestor.get('id')
+                if aid and aid not in texts_to_embed:
+                    texts_to_embed[aid] = ancestor.get_text()
+
+            # Collect the p tag itself
+            if p_id not in texts_to_embed:
+                texts_to_embed[p_id] = tag.get_text()
+
+        if not texts_to_embed:
+            return
+
+        # Phase 2: Batch-generate all raw embeddings in ONE API call
+        batch_ids = list(texts_to_embed.keys())
+        batch_texts = [texts_to_embed[tid] for tid in batch_ids]
+        print(f"[Hierarchical] Batch embedding {len(batch_texts)} nodes ({len(active_ids)} p-tags + {len(batch_texts) - len(active_ids)} structural ancestors)")
+        raw_vectors = llm_client.generate_embeddings(batch_texts)
+
+        raw_embeddings = {}  # tag_id -> raw numpy vector
+        for i, tid in enumerate(batch_ids):
+            raw_embeddings[tid] = np.array(raw_vectors[i], dtype='float32')
+
+        # Phase 3: Top-down memoized summation for each p tag
+        p_embedding_map = {}
+        for p_id, tag in p_tags:
+            lineage = get_lineage(tag)
+            full_chain = lineage + [tag]  # ancestors + p itself
+
+            for node in full_chain:
+                nid = node.get('id')
+                if nid in structural_cache:
+                    continue  # already memoized
+
+                raw = raw_embeddings.get(nid)
+                if raw is None:
+                    continue
+
+                # Find immediate structural parent
+                parent_ancestors = get_lineage(node)
+                if parent_ancestors:
+                    parent_id = parent_ancestors[-1].get('id')
+                    if parent_id and parent_id in structural_cache:
+                        structural_cache[nid] = raw + structural_cache[parent_id]
+                    else:
+                        structural_cache[nid] = raw  # parent not cached, use raw
+                else:
+                    structural_cache[nid] = raw  # root node, no parent
+
+            # The p tag's final vector is the summed vector in structural_cache
+            if p_id in structural_cache:
+                p_embedding_map[p_id] = {
+                    "selector": self._build_selector_path(tag),
+                    "vector": structural_cache[p_id].tolist(),
+                    "last_consolidated": datetime.now().isoformat()
+                }
+
+        # Phase 4: Persist p embeddings
+        os.makedirs(os.path.dirname(self.p_embeddings_path), exist_ok=True)
+        with open(self.p_embeddings_path, "w") as f:
+            json.dump(p_embedding_map, f, indent=4)
+
+        # Phase 5: Persist structural cache (non-p entries only)
+        structural_persist = {}
+        for sid, vec in structural_cache.items():
+            if sid not in active_ids:  # exclude p tags
+                structural_persist[sid] = vec.tolist()
+
+        os.makedirs(os.path.dirname(self.structural_embeddings_path), exist_ok=True)
+        with open(self.structural_embeddings_path, "w") as f:
+            json.dump(structural_persist, f, indent=4)
+
+        print(f"[Hierarchical] Persisted {len(p_embedding_map)} p-vectors, {len(structural_persist)} structural vectors")
+
     def sync_embeddings(self, llm_client, active_ids):
         """
-        Calculates difference matrices sequentially natively.
-        Extracts new vectors, sweeps obsolete arrays natively, and pushes memory explicitly once via single active dump limit.
+        Lightweight stage-update path.
+        Reads cached structural vectors from structural_embeddings.json (read-only)
+        and sums them with new p-tag raw embeddings.
         """
-        print("[MemoryManager.sync_embeddings] Synchronizing graph node arrays hashing boundaries dynamically...")
+        print("[MemoryManager.sync_embeddings] Stage-update: syncing with structural cache...")
         from datetime import datetime
-        
-        # 1. Load active embedding JSON state fully mapped memory strictly ONE TIME
+
+        # 1. Load existing p embedding map
         embedding_map = {}
         if os.path.exists(self.p_embeddings_path):
             with open(self.p_embeddings_path, "r") as f:
@@ -172,48 +311,66 @@ class MemoryManager:
                     embedding_map = json.load(f)
                 except json.JSONDecodeError:
                     pass
-        
-        # 2. Prune globally dead selectors missing mapped keys
+
+        # 2. Load structural cache (read-only)
+        structural_cache = {}
+        if os.path.exists(self.structural_embeddings_path):
+            with open(self.structural_embeddings_path, "r") as f:
+                try:
+                    structural_cache = json.load(f)
+                except json.JSONDecodeError:
+                    pass
+
+        # 3. Prune dead p selectors
         if isinstance(embedding_map, dict):
             dead_nodes = [k for k in embedding_map.keys() if k not in active_ids]
             for key in dead_nodes:
                 del embedding_map[key]
 
-        # 3. Formulate physical string payloads array map bypassing unchanged roots 
+        # 4. Collect new p tags that need embedding
         new_nodes = []
         new_contents = []
         new_selectors = []
-        
+        new_parent_ids = []  # nearest structural parent ID for each new p
+
         for p_id in active_ids:
             if p_id not in embedding_map:
                 tag = self.soup.find(id=p_id)
                 if tag:
                     new_nodes.append(p_id)
                     new_contents.append(tag.get_text())
-                    
-                    parents = list(tag.parents)
-                    path_parts = []
-                    for p in reversed(parents):
-                        if p.name and p.name != '[document]':
-                            if p.get('id'):
-                                path_parts.append(f"{p.name}#{p.get('id')}")
-                            else:
-                                path_parts.append(p.name)
-                    path_parts.append(f"p#{p_id}")
-                    new_selectors.append(" > ".join(path_parts))
-        
-        # 4. Synthesize vectors sequentially natively 
+                    new_selectors.append(self._build_selector_path(tag))
+
+                    # Find nearest structural parent in cache
+                    lineage = self._get_structural_lineage(tag)
+                    parent_id = None
+                    for ancestor in reversed(lineage):  # closest first
+                        aid = ancestor.get('id')
+                        if aid and aid in structural_cache:
+                            parent_id = aid
+                            break
+                    new_parent_ids.append(parent_id)
+
+        # 5. Generate raw embeddings for new p tags and sum with parent vectors
         if new_nodes:
             vectors = llm_client.generate_embeddings(new_contents)
             for i, p_id in enumerate(new_nodes):
+                raw_vec = np.array(vectors[i], dtype='float32')
+
+                parent_id = new_parent_ids[i]
+                if parent_id and parent_id in structural_cache:
+                    parent_vec = np.array(structural_cache[parent_id], dtype='float32')
+                    final_vec = (raw_vec + parent_vec).tolist()
+                else:
+                    final_vec = raw_vec.tolist()
+
                 embedding_map[p_id] = {
                     "selector": new_selectors[i],
-                    "vector": min(vectors[i], vectors[i]) if hasattr(vectors[i], '__iter__') else vectors[i], # Just safety fallback
+                    "vector": final_vec,
                     "last_consolidated": datetime.now().isoformat()
                 }
-                embedding_map[p_id]["vector"] = vectors[i] # Set properly 
-        
-        # 5. Flush and persist mapped JSON precisely locally ONE time
+
+        # 6. Flush p embeddings
         os.makedirs(os.path.dirname(self.p_embeddings_path), exist_ok=True)
         with open(self.p_embeddings_path, "w") as f:
             json.dump(embedding_map, f, indent=4)
@@ -235,23 +392,20 @@ class MemoryManager:
 
         # 1. Prepare data for NumPy
         ids = list(embedding_map.keys())
-        # Convert list of vectors to a 2D NumPy array
         vectors = np.array([item['vector'] for item in embedding_map.values()], dtype='float32')
         q_vec = np.array(query_vector, dtype='float32')
 
-        # 2. Vectorized Cosine Similarity Math
-        # similarity = (A . B) / (||A|| * ||B||)
+        # Short-circuit: zero-norm query can never match anything
+        q_norm = np.linalg.norm(q_vec)
+        if q_norm == 0:
+            return []
+
+        # 2. Vectorized Cosine Similarity
         dot_product = np.dot(vectors, q_vec)
-        norms = np.linalg.norm(vectors, axis=1) * np.linalg.norm(q_vec)
-        
-        # Avoid div/0 error by applying a small epsilon
+        norms = np.linalg.norm(vectors, axis=1) * q_norm
         norms = np.where(norms == 0, 1e-10, norms)
         similarities = dot_product / norms
 
-        # 3. Filter by threshold and sort
-        hits = []
-        for i, score in enumerate(similarities):
-            if score >= threshold:
-                hits.append((ids[i], score))
-        
-        return [hit[0] for hit in hits]
+        # 3. Filter by threshold
+        mask = similarities >= threshold
+        return [ids[i] for i in np.where(mask)[0]]

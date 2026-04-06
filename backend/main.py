@@ -114,7 +114,7 @@ async def chat_endpoint(request: Request):
         return {"response": "Error: Empty query."}
         
     try:
-        response = brain.run_inference(query, threshold=threshold, semantic_threshold=semantic_threshold)
+        response = brain.run_inference(query, stage_threshold=threshold, search_threshold=semantic_threshold)
         return {"response": response}
     except Exception as e:
         return {"response": f"Runtime Exception: {str(e)}"}
@@ -123,6 +123,9 @@ async def chat_endpoint(request: Request):
 async def force_day_change():
     """Forces an immediate atomization of the Knowledge Base and resets the Day Stage cycle natively."""
     try:
+        stage_log = brain.engram_trace._get_stage_log()
+        if len(stage_log) > 0:
+            brain.consolidate_and_transition()
         brain.memory.atomizer(brain.llm, compress=True)
         brain.engram_trace.start_new_stage()
         return {"status": "success", "message": "Day change forced successfully."}
@@ -142,19 +145,17 @@ async def state_endpoint():
                 
         # Parse running JSON structures tracking immediate logs
         stage_log = []
-        log_path = "src/memory/current_stage_log.json"
         import json
-        if os.path.exists(log_path):
-            with open(log_path, "r", encoding='utf-8') as f:
+        if os.path.exists(brain.engram_trace.stage_log_path):
+            with open(brain.engram_trace.stage_log_path, "r", encoding='utf-8') as f:
                 try:
                     stage_log = json.load(f)
                 except ValueError:
                     stage_log = []
                     
         session_log = []
-        session_path = "src/memory/session_log.json"
-        if os.path.exists(session_path):
-            with open(session_path, "r", encoding='utf-8') as f:
+        if os.path.exists(brain.engram_trace.session_log_path):
+            with open(brain.engram_trace.session_log_path, "r", encoding='utf-8') as f:
                 try:
                     session_log = json.load(f)
                 except ValueError:
@@ -165,7 +166,7 @@ async def state_endpoint():
             "knowledge_base": kb_content,
             "stage_log": stage_log,
             "session_log": session_log,
-            "engram_trace": brain.engram_trace.current_trace
+            "engram_trace": list(brain.engram_trace.current_trace)
         }
     except Exception as e:
         return {"error": str(e)}

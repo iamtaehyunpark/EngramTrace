@@ -52,12 +52,13 @@ class EngramTrace:
         except (json.JSONDecodeError, FileNotFoundError):
             return []
     
-    def _get_last_stage_time(self):
+    def _get_last_stage_time(self, log=None):
         try:
-            with open(self.stage_log_path, "r") as f:
-                log = json.load(f)
-                if log and isinstance(log, list):
-                    return datetime.fromisoformat(log[-1]["timestamp"])
+            if log is None:
+                with open(self.stage_log_path, "r") as f:
+                    log = json.load(f)
+            if log and isinstance(log, list):
+                return datetime.fromisoformat(log[-1]["timestamp"])
         except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError):
             pass
         return None
@@ -105,7 +106,7 @@ class EngramTrace:
         }
         
         # 1. Ephemeral Stage Log (Wiped on drift)
-        stage = self._get_stage_log() if os.path.exists(self.stage_log_path) else []
+        stage = self._get_stage_log()
         stage.append(qa_block)
         with open(self.stage_log_path, "w") as f:
             json.dump(stage, f)
@@ -115,7 +116,7 @@ class EngramTrace:
         if qa_vec is not None:
             session_qa_block["last_qa_vec"] = qa_vec if isinstance(qa_vec, list) else getattr(qa_vec, "tolist", lambda: qa_vec)()
             
-        session = self._get_session_log() if os.path.exists(self.session_log_path) else []
+        session = self._get_session_log()
         if session and "last_qa_vec" in session[-1]:
             del session[-1]["last_qa_vec"]
             
@@ -184,7 +185,9 @@ class Brain:
         parents = set()
         for p_id in self.engram_trace.current_trace:
             tag = self.memory.soup.find(id=p_id)
-            if tag and tag.parent:
+            if not tag:
+                continue
+            if tag.parent:
                 parents.add(tag.parent)
             else:
                 parents.add(tag)
@@ -253,7 +256,7 @@ class Brain:
             similarity = self.engram_trace._calculate_stage_drift(q_vec)
             print("similarity", similarity)
             if similarity < active_stage_threshold:
-                last_stage_time = self.engram_trace._get_last_stage_time()
+                last_stage_time = self.engram_trace._get_last_stage_time(log=stage_log)
                 # Day logic baseline
                 if last_stage_time and (datetime.now() - last_stage_time).total_seconds() > 4000:
                     print("day changed")
@@ -271,8 +274,8 @@ class Brain:
         self.engram_trace.current_trace.update(hit_ids)
         
         working_context = self.engram_trace._get_stage_context()
-        stage_history = self.engram_trace._get_stage_log()
-        session_history = self.engram_trace._get_session_log()[-5:] # Safely cap context memory to the latest 5 structural dialogue branches!
+        stage_history = self.engram_trace._get_stage_log()  # Re-read: consolidation may have cleared it
+        session_history = session_log[-5:]  # Reuse from earlier read
         
         # 4. Standard Response 
         response = self.llm.generate_response(
