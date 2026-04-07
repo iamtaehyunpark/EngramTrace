@@ -124,52 +124,106 @@ body {
 .chat-box {
   height: 550px;
   overflow-y: auto;
-  border: 1px solid var(--border);
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
+  border: 1px solid var(--border-strong);
+  padding: 2.5rem;
+  margin-bottom: 2rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  background: #fdfdfd;
+  gap: 2rem;
+  background: #ffffff;
+  box-shadow: inset 0 2px 10px rgba(0,0,0,0.02);
 }
 
 .message {
-  padding: 0;
-  font-size: 1rem;
+  padding: 1.5rem;
+  font-size: 0.95rem;
   line-height: 1.6;
-  border: none;
-  background: transparent;
+  border: 1px solid var(--border);
+  background: #fafafa;
+  position: relative;
+  transition: transform 0.1s;
 }
 
 .message b {
   font-family: var(--mono);
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   text-transform: uppercase;
   color: var(--text-muted);
   display: block;
-  margin-bottom: 0.2rem;
+  margin-bottom: 1rem;
+  letter-spacing: 0.1em;
+  opacity: 0.8;
 }
 
 .user-msg {
-  border-left: 2px solid var(--border-strong);
-  padding-left: 1rem;
+  border: 1px solid var(--border-strong);
+  border-left: 5px solid var(--text);
+  background: #ffffff;
 }
 
 .system-msg {
-  padding-left: 1rem;
-  color: var(--text);
+  border-left: 5px solid var(--border-strong);
+  background: #fdfdfd;
 }
 
 .error-msg {
   color: #d32f2f;
-  border-left: 2px solid #d32f2f;
+  border: 1px solid #ffcdd2;
+  border-left: 5px solid #d32f2f;
+  background: #fffafa;
+}
+
+.markdown-content {
+  color: var(--text);
+}
+
+.markdown-content p {
+  margin: 0.8rem 0;
+}
+
+.markdown-content p:first-child { margin-top: 0; }
+.markdown-content p:last-child { margin-bottom: 0; }
+
+.markdown-content h1, .markdown-content h2, .markdown-content h3 {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.5rem 0;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.markdown-content ul, .markdown-content ol {
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+}
+
+.markdown-content li {
+  margin-bottom: 0.4rem;
+}
+
+.markdown-content code {
+  background: #f4f4f4;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.85rem;
+  font-family: var(--mono);
+  border: 1px solid #ececec;
+}
+
+.markdown-content blockquote {
+  margin: 1rem 0;
   padding-left: 1rem;
+  border-left: 3px solid var(--border);
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .loading-msg {
+  border: 1px dashed var(--border);
+  padding: 1rem;
+  background: transparent;
   color: var(--text-muted);
   font-style: italic;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .input-area {

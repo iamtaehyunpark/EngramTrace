@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import './App.css';
+import ReactMarkdown from 'react-markdown';
 import KBStudio from './KBStudio';
 
 function LogsView() {
@@ -11,7 +12,7 @@ function LogsView() {
       try {
         const response = await fetch('/state');
         const data = await response.json();
-        if(!response.ok || data.error) throw new Error(data.error || "Failed to parse API states");
+        if (!response.ok || data.error) throw new Error(data.error || "Failed to parse API states");
         setSysState(data);
       } catch (err) {
         setError(err.message);
@@ -29,7 +30,7 @@ function LogsView() {
         <h3>Active Engram Trace (Ecphory Working Page)</h3>
         <pre>{JSON.stringify(sysState.engram_trace, null, 2)}</pre>
       </div>
-      
+
       <div className="data-panel">
         <h3>Temporal Buffer (Stage Log)</h3>
         <pre>{JSON.stringify(sysState.stage_log, null, 2)}</pre>
@@ -45,7 +46,7 @@ function LogsView() {
 
 function App() {
   const [currentView, setCurrentView] = useState('chat'); // 'chat' | 'kb' | 'logs'
-  
+
   const [messages, setMessages] = useState([]);
   const [inputVal, setInputVal] = useState('');
   const [thresholdVal, setThresholdVal] = useState(0.90);
@@ -69,10 +70,10 @@ function App() {
             });
             setMessages(rehydrated);
           } else {
-             setMessages([{ role: 'system', text: '[System Engine Online. Virtual Graph matrix successfully initialized...]' }]);
+            setMessages([{ role: 'system', text: '[System Engine Online. Virtual Graph matrix successfully initialized...]' }]);
           }
         }
-      } catch (err) {}
+      } catch (err) { }
     };
     fetchHistory();
   }, []);
@@ -85,7 +86,7 @@ function App() {
         setMessages([{ role: 'system', text: '[System Engine Memory Wiped. Virtual Graph matrix successfully initialized...]' }]);
         setServerLogs([]);
         if (currentView !== 'chat') {
-           window.location.reload();
+          window.location.reload();
         }
       }
     } catch (err) {
@@ -134,7 +135,7 @@ function App() {
           const data = await res.json();
           setServerLogs(data.logs || []);
         }
-      } catch (err) {}
+      } catch (err) { }
     }, 400);
 
     try {
@@ -146,8 +147,8 @@ function App() {
 
       const data = await response.json();
       clearInterval(pollLogs);
-      
-      if(response.ok) {
+
+      if (response.ok) {
         setMessages(prev => [...prev, { role: 'bot', text: data.response }]);
       } else {
         throw new Error(data.response || 'Network error');
@@ -167,16 +168,16 @@ function App() {
         <div className="nav-buttons">
           <div className="threshold-group">
             <label>Drift</label>
-            <input 
-              type="number" step="0.01" min="0.0" max="1.0" 
+            <input
+              type="number" step="0.01" min="0.0" max="1.0"
               value={thresholdVal}
               onChange={e => setThresholdVal(e.target.value)}
             />
           </div>
           <div className="threshold-group">
             <label>Search</label>
-            <input 
-              type="number" step="0.01" min="0.0" max="1.0" 
+            <input
+              type="number" step="0.01" min="0.0" max="1.0"
               value={semanticThresholdVal}
               onChange={e => setSemanticThresholdVal(e.target.value)}
             />
@@ -184,51 +185,49 @@ function App() {
           <button className="nav-btn danger-btn" onClick={handleWipeMemory}>Wipe</button>
           <button className="nav-btn warning-btn" onClick={handleForceDayChange}>Day Change</button>
           <div className="nav-divider" />
-          <button 
+          <button
             className={`nav-btn ${currentView === 'chat' ? 'active' : ''}`}
             onClick={() => setCurrentView('chat')}
           >Chat</button>
-          <button 
+          <button
             className={`nav-btn ${currentView === 'kb' ? 'active' : ''}`}
             onClick={() => setCurrentView('kb')}
           >KB Studio</button>
-          <button 
+          <button
             className={`nav-btn ${currentView === 'logs' ? 'active' : ''}`}
             onClick={() => setCurrentView('logs')}
           >Logs</button>
         </div>
       </div>
-      
+
       {currentView === 'kb' && <KBStudio />}
       {currentView === 'logs' && <LogsView />}
       {currentView === 'chat' && (
         <>
           <div className="chat-box">
             {messages.map((msg, index) => (
-              <div key={index} className={`message ${
-                msg.role === 'user' ? 'user-msg' : 
-                msg.role === 'error' ? 'error-msg' : 'system-msg'
-              }`}>
+              <div key={index} className={`message ${msg.role === 'user' ? 'user-msg' :
+                  msg.role === 'error' ? 'error-msg' : 'system-msg'
+                }`}>
                 <b>{msg.role === 'user' ? 'COMMAND:' : msg.role === 'error' ? 'ERROR:' : 'ENGRAM:'}</b>
-                <br />
-                {(typeof msg.text === 'string' ? msg.text : JSON.stringify(msg.text)).split('\\n').map((line, i) => (
-                  <span key={i}>{line}<br/></span>
-                ))}
+                <div className="markdown-content">
+                  <ReactMarkdown>{typeof msg.text === 'string' ? msg.text : JSON.stringify(msg.text)}</ReactMarkdown>
+                </div>
               </div>
             ))}
             {isLoading && (
               <div className="message loading-msg">
-                <i>Process Output Stream:</i><br/>
-                {serverLogs.length === 0 ? "Evaluating topological drift and checking vectors..." : 
+                <i>Process Output Stream:</i><br />
+                {serverLogs.length === 0 ? "Evaluating topological drift and checking vectors..." :
                   serverLogs.map((log, i) => <div key={i}>&gt; {log}</div>)
                 }
               </div>
             )}
             <div ref={chatEndRef} />
           </div>
-          
+
           <div className="input-area">
-            <textarea 
+            <textarea
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
               onKeyDown={(e) => {
@@ -237,7 +236,7 @@ function App() {
                   handleSubmit();
                 }
               }}
-              placeholder="Send a query to the Engram Graph... (Shift+Enter for newline)" 
+              placeholder="Send a query to the Engram Graph... (Shift+Enter for newline)"
               disabled={isLoading}
               autoComplete="off"
               rows={3}
