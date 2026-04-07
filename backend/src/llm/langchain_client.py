@@ -5,11 +5,10 @@ from google.genai import types
 
 class LangChainClient:
     def __init__(self):
-        # Initializing Gemini 3.1 Flash-Lite
         self.model = ChatGoogleGenerativeAI(
             model="gemini-3.1-flash-lite-preview",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
-            temperature=0.1  # Low temperature is critical for structural consistency
+            temperature=0.1
         )
 
         self.embedding_model = GoogleGenerativeAIEmbeddings(
@@ -19,7 +18,7 @@ class LangChainClient:
         )
 
     def _get_clean_response(self, system_prompt: str, human_prompt: str) -> str:
-        """Utility to unify the invocation and extraction logic safely across all inference modes."""
+        """Unified invocation and extraction logic across all inference modes."""
         sys_msg = SystemMessage(content=system_prompt)
         hum_msg = HumanMessage(content=human_prompt)
         
@@ -34,98 +33,97 @@ class LangChainClient:
 
     def generate_structured_html(self, raw_text: str, compress: bool = False) -> str:
         """
-        Uses the LLM to semantically partition raw text into a strictly addressable HTML structure.
+        Uses the LLM to convert raw text into a structured HTML document
+        optimized for the downstream embedding and retrieval pipeline.
+        
+        Critical contract: The engine indexes ONLY <p> tags as retrieval units.
+        Every <p> must contain a single coherent concept for effective semantic search.
         """
         if compress:
-            system_prompt = """
-                Your task is to properly restructure and organize a large temporal Knowledge Base into a well-structured HTML document.
-                RULES:
-                1. Focus on restructuring and logical grouping using hierarchical headers (<h1>, <h2>) rather than aggressively summarizing or deleting content.
-                2. Retain the majority of the original text to preserve the semantic flow and the chronological evolution of ideas.
-                3. If there are conflicting statements or evolving facts in the context, give priority and more weight to the latest information.
-                4. Do NOT add artificial IDs, custom data-attributes, or forced semantic containers.
-                5. Return only the clean HTML markup.
-            """
-            human_message = f"Restructure and format the following textual history into a logical HTML document, preserving textual flow:\n\n{raw_text}"
-        else:
-            system_prompt = """
-                Your task is to restructure raw, unstructured text into standard HTML while preserving its semantic flow.
-                RULES:
-                1. Convert the text into a clean, well-organized HTML page maintaining almost all original content.
-                2. Organize the content logically using standard HTML tags (e.g., <p>, <h1>, <h2>, <ul>, <li>) to show temporal or topic progression.
-                3. Treat the latest context as the source of truth if contradictions exist.
-                4. Do NOT add artificial IDs, custom data-attributes, or forced semantic grouping containers unless it's natural.
-                5. Return only the HTML markup.
-            """
-            human_message = f"Format the following text into structured HTML preserving original semantic depth:\n\n{raw_text}"
-            
-        return self._get_clean_response(system_prompt, human_message)
+            system_prompt = """You are restructuring an existing HTML knowledge base for long-term storage efficiency.
 
-    def regenerate_structured_html(self, raw_html: str) -> str:
-        """
-        Restructures messy or broken HTML into clean standard HTML.
-        """
-        system_prompt = """
-            Your task is to repair and standardize existing HTML structures.
-            RULES:
-            1. Return only clean, normalized HTML.
-            2. Keep all text content intact.
-            3. Remove orphaned or malformed nested tags but preserve structural meaning.
-        """
-        human_message = f"Clean the following HTML:\n\n{raw_html}"
+INPUT: An HTML document that has grown organically over multiple sessions.
+OUTPUT: A reorganized HTML document with improved logical grouping.
+
+STRUCTURE RULES:
+1. Use <h1>, <h2>, <h3> headers to create a clear topical hierarchy.
+2. Each <p> tag must contain exactly one coherent concept or fact. This is critical — downstream systems use individual <p> tags as atomic retrieval units for semantic search.
+3. Merge duplicate or near-duplicate information. When facts conflict, the most recently added version takes priority.
+4. Preserve the substantive content. Do not aggressively summarize — reorganize and deduplicate.
+5. Do NOT add id attributes. The engine assigns deterministic IDs automatically.
+6. Return only clean HTML markup. No markdown, no code fences."""
+            human_message = f"Restructure and deduplicate the following knowledge base HTML:\n\n{raw_text}"
+        else:
+            system_prompt = """You are converting unstructured text into a well-organized HTML document.
+
+INPUT: Raw, unstructured text containing various concepts and facts.
+OUTPUT: A clean HTML document with logical structure.
+
+STRUCTURE RULES:
+1. Organize content hierarchically using <h1>, <h2>, <h3> for topics and subtopics.
+2. Each <p> tag must contain exactly one coherent concept or fact. This is critical — downstream systems use individual <p> tags as atomic retrieval units for semantic search. Break large blocks into multiple <p> tags.
+3. Use <ul>/<li> only for genuine enumerated lists. Prefer <p> tags for standalone facts.
+4. Preserve all original content and its semantic meaning. Do not omit or summarize.
+5. When contradictions exist in the source text, keep the latest version.
+6. Do NOT add id attributes. The engine assigns deterministic IDs automatically.
+7. Return only clean HTML markup. No markdown, no code fences."""
+            human_message = f"Convert the following text into structured HTML:\n\n{raw_text}"
+            
         return self._get_clean_response(system_prompt, human_message)
 
 
     def synthesize_session(self, log_history: list, context_html: str) -> str:
         """
-        Compresses an active Stage Log against its anchoring KB context, creating an updated HTML block proposition.
+        Merges an active Stage Log (conversation buffer) into the anchoring KB context,
+        producing updated or new HTML fragments for DOM grafting.
         """
-        # Convert dictionary list string
         history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in log_history] if isinstance(log_history, list) else log_history)
         
-        system_prompt = """
-            You are a backend graph compiler integrating a short-term conversational session into Long-Term HTML knowledge arrays.
-            
-            RULES:
-            1. You are provided with specific Original HTML structural blocks (parent tags) and a Dialogue History.
-            2. If new knowledge fits into the provided Original HTML blocks, rewrite the ENTIRE block incorporating the new knowledge. You MUST preserve the exact original ID attributes of the top-level parent tags.
-            3. If the new knowledge is completely unrelated to the provided blocks, create a completely NEW standalone HTML parent tag (like <section> or <article>) for it.
-            4. Do not attempt to build a perfectly valid full <html> or <body> document. It is perfectly fine to output disconnected, fragmented HTML tags. They will be grafted structurally by the engine later.
-            5. Output ONLY the raw updated HTML tags. Do not output conversational pre-text or markdown borders.
-        """
-        human_message = f"Original HTML context:\n{context_html}\n\nDialogue History to apply:\n{history_str}"
+        system_prompt = """You are merging new knowledge from a conversation into existing HTML knowledge fragments.
+
+INPUT:
+- "Original HTML context": Existing HTML fragments from the knowledge base that are topically relevant to the conversation.
+- "Conversation log": A sequence of Q&A pairs containing new information to integrate.
+
+OUTPUT: Updated or new HTML fragments ready for DOM insertion.
+
+RULES:
+1. If new knowledge fits into the provided Original HTML fragments, rewrite the ENTIRE fragment incorporating the new information. Preserve the original id attributes on parent tags you did not change textually.
+2. If the new knowledge is unrelated to any provided fragment, create a NEW standalone HTML block (e.g., <section> with <h2>/<h3> headers and <p> content).
+3. Each <p> tag must contain exactly one coherent concept — these are the atomic retrieval units for semantic search.
+4. For any content you rewrite or create new, do NOT include id attributes — the engine assigns them automatically based on content hashing. Only preserve ids on tags whose text you kept unchanged.
+5. Output ONLY raw HTML tags. No full <html>/<body> wrapper. No markdown. No commentary."""
+        human_message = f"Original HTML context:\n{context_html}\n\nConversation log:\n{history_str}"
         return self._get_clean_response(system_prompt, human_message)
 
 
     def generate_embeddings(self, text: list):
-        """
-        Batch generates embeddings for the retrieved or updated <p> tags.
-        """
+        """Batch-generates 256-dimensional embeddings for semantic indexing."""
         return self.embedding_model.embed_documents(text)
 
     def generate_response(self, query: str, context: str, history: list, session_history: list = None) -> str:
         """
-        Generates a standard cognitive response leveraging both deep structure and ephemeral loops safely.
+        Generates a conversational response using the model's own knowledge,
+        supplemented by retrieved long-term memory and short-term conversation context.
         """
-        print("[LangChainClient.generate_response] Pinging Gemini 3.1 inference matrix...")
+        print("[LangChainClient.generate_response] Generating response...")
         from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
         
-        history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in history]) if history else "None"
-        
-        system_prompt = f"""You are a helpful, intelligent AI assistant.
-Answer the user's questions utilizing your expansive knowledge freely.
-The 'Retrieved Knowledge Base Context' below is just a helpful hint from your long-term memory graph; 
-if the user asks something outside of it, you should still answer it using your own general knowledge.
+        history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in history]) if history else ""
 
-Retrieved Knowledge Base Context (Topical Hints):
-{context}
+        system_prompt = f"""You are an intelligent conversational assistant. Answer the user's questions using your full general knowledge.
 
-Active Stage Interaction Log (Supplementary Immediate Discussion Focus):
-{history_str}
-"""
+You also have access to two supplementary memory sources that may contain relevant context from past interactions. Use them naturally — like a person recalling relevant memories — but they are not your only source of knowledge. If the user asks something outside of what's stored in memory, answer freely from your own understanding.
+
+Long-term memory (retrieved from knowledge base):
+{context if context else "(No relevant memories retrieved)"}
+
+Recent conversation context (current topic buffer):
+{history_str if history_str else "(New conversation)"}"""
+
         messages = [SystemMessage(content=system_prompt)]
         
-        # Sequentially map the active continuous session status to prevent topical amnesia 
+        # Replay recent session turns as message pairs for continuity
         if session_history:
             for item in session_history:
                 messages.append(HumanMessage(content=item['query']))
@@ -136,7 +134,7 @@ Active Stage Interaction Log (Supplementary Immediate Discussion Focus):
             response = self.model.invoke(messages)
             content = response.content
             
-            # Normalize Gemini Multi-modal Output Blocks safely into standard continuous strings!
+            # Normalize multi-modal output blocks into a continuous string
             if isinstance(content, list):
                 text_blocks = []
                 for block in content:

@@ -31,8 +31,8 @@ graph TB
     end
     
     subgraph LLM["LLM Layer"]
-        GEMINI["Gemini 1.5 Flash (Generation)"]
-        EMB["Gemini Embedding (256-dim)"]
+        GEMINI["Gemini 3.0 Flash Lite (Generation)"]
+        EMB["Gemini Embedding 1 (256-dim)"]
     end
     
     UI --> CHAT & STATE & LOGS
@@ -67,7 +67,7 @@ On significant time gaps, the system performs a "restructuring" pass. Older data
 ## 🛠 Tech Stack
 - **Backend**: FastAPI, LangChain, BeautifulSoup4, NumPy
 - **Frontend**: React 19, Vite, React Flow, CodeMirror
-- **AI**: Google Gemini Pro (Flash), Gemini Embedding-001
+- **AI**: Google Gemini 3.0 Flash Lite, Gemini Embedding-001
 
 ---
 
