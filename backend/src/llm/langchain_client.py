@@ -6,7 +6,7 @@ from google.genai import types
 class LangChainClient:
     def __init__(self):
         self.model = ChatGoogleGenerativeAI(
-            model="gemini-3.1-flash-lite-preview",
+            model="gemini-2.5-flash",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.1
         )
@@ -47,11 +47,13 @@ OUTPUT: A reorganized HTML document with improved logical grouping.
 
 STRUCTURE RULES:
 1. Use <h1>, <h2>, <h3> headers to create a clear topical hierarchy.
-2. Each <p> tag must contain exactly one coherent concept or fact. This is critical — downstream systems use individual <p> tags as atomic retrieval units for semantic search.
-3. Merge duplicate or near-duplicate information. When facts conflict, the most recently added version takes priority.
-4. Preserve the substantive content. Do not aggressively summarize — reorganize and deduplicate.
-5. Do NOT add id attributes. The engine assigns deterministic IDs automatically.
-6. Return only clean HTML markup. No markdown, no code fences."""
+2. ALL content must be strictly nested inside its semantic parent. Wrap each heading and ALL of its associated content (<p>, <ul>, <ol>, <table>, etc.) in a <section> tag. Nest sections hierarchically: h3-sections inside h2-sections inside h1-sections. Nothing should float as an orphan sibling of a heading it belongs to.
+3. Each <p> tag must contain exactly one coherent concept or fact. This is critical — downstream systems use individual <p> tags as atomic retrieval units for semantic search.
+4. Lists (<ul>/<ol>) must be placed inside the <section> of the heading they relate to, after any introductory <p> tag.
+5. Merge duplicate or near-duplicate information. When facts conflict, the most recently added version takes priority.
+6. Preserve the substantive content. Do not aggressively summarize — reorganize and deduplicate.
+7. Do NOT add id attributes. The engine assigns deterministic IDs automatically.
+8. Return only clean HTML markup. No markdown, no code fences."""
             human_message = f"Restructure and deduplicate the following knowledge base HTML:\n\n{raw_text}"
         else:
             system_prompt = """You are converting unstructured text into a well-organized HTML document.
@@ -61,12 +63,13 @@ OUTPUT: A clean HTML document with logical structure.
 
 STRUCTURE RULES:
 1. Organize content hierarchically using <h1>, <h2>, <h3> for topics and subtopics.
-2. Each <p> tag must contain exactly one coherent concept or fact. This is critical — downstream systems use individual <p> tags as atomic retrieval units for semantic search. Break large blocks into multiple <p> tags.
-3. Use <ul>/<li> only for genuine enumerated lists. Prefer <p> tags for standalone facts.
-4. Preserve all original content and its semantic meaning. Do not omit or summarize.
-5. When contradictions exist in the source text, keep the latest version.
-6. Do NOT add id attributes. The engine assigns deterministic IDs automatically.
-7. Return only clean HTML markup. No markdown, no code fences."""
+2. ALL content must be strictly nested inside its semantic parent. Wrap each heading and ALL of its associated content (<p>, <ul>, <ol>, <table>, etc.) in a <section> tag. Nest sections hierarchically: h3-sections inside h2-sections inside h1-sections. Nothing should float as an orphan sibling of a heading it belongs to.
+3. Each <p> tag must contain exactly one coherent concept or fact. This is critical — downstream systems use individual <p> tags as atomic retrieval units for semantic search. Break large blocks into multiple <p> tags.
+4. Lists (<ul>/<ol>) belong inside the <section> of the heading they relate to, after any introductory <p> tag. Example: <section><h3>Features</h3><p>Key features include:</p><ul><li>...</li></ul></section>
+5. Preserve all original content and its semantic meaning. Do not omit or summarize.
+6. When contradictions exist in the source text, keep the latest version.
+7. Do NOT add id attributes. The engine assigns deterministic IDs automatically.
+8. Return only clean HTML markup. No markdown, no code fences."""
             human_message = f"Convert the following text into structured HTML:\n\n{raw_text}"
             
         return self._get_clean_response(system_prompt, human_message)
@@ -89,10 +92,11 @@ OUTPUT: Updated or new HTML fragments ready for DOM insertion.
 
 RULES:
 1. If new knowledge fits into the provided Original HTML fragments, rewrite the ENTIRE fragment incorporating the new information. Preserve the original id attributes on parent tags you did not change textually.
-2. If the new knowledge is unrelated to any provided fragment, create a NEW standalone HTML block (e.g., <section> with <h2>/<h3> headers and <p> content).
-3. Each <p> tag must contain exactly one coherent concept — these are the atomic retrieval units for semantic search.
-4. For any content you rewrite or create new, do NOT include id attributes — the engine assigns them automatically based on content hashing. Only preserve ids on tags whose text you kept unchanged.
-5. Output ONLY raw HTML tags. No full <html>/<body> wrapper. No markdown. No commentary."""
+2. If the new knowledge is unrelated to any provided fragment, create a NEW standalone <section> with appropriate headings and content.
+3. ALL content must be strictly nested inside its semantic parent. Wrap each heading and ALL of its associated content (<p>, <ul>, <ol>, etc.) in a <section> tag. Lists and supporting elements belong inside the section of their heading, not as orphan siblings.
+4. Each <p> tag must contain exactly one coherent concept — these are the atomic retrieval units for semantic search.
+5. For any content you rewrite or create new, do NOT include id attributes — the engine assigns them automatically based on content hashing. Only preserve ids on tags whose text you kept unchanged.
+6. Output ONLY raw HTML tags. No full <html>/<body> wrapper. No markdown. No commentary."""
         human_message = f"Original HTML context:\n{context_html}\n\nConversation log:\n{history_str}"
         return self._get_clean_response(system_prompt, human_message)
 
