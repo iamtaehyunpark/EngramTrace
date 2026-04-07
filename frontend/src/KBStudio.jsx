@@ -284,7 +284,7 @@ export default function KBStudio() {
                 onChange={(val) => setHtmlContent(val)}
                 extensions={[html(), EditorView.lineWrapping]}
                 theme={catppuccinTheme}
-                height="calc(100vh - 300px)"
+                height="100%"
                 basicSetup={{
                   lineNumbers: true,
                   foldGutter: true,
