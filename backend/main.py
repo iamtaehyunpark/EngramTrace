@@ -147,6 +147,20 @@ async def save_kb(request: Request):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@app.post("/trace/toggle")
+async def toggle_trace(request: Request):
+    """Toggles a selector in the active engram trace set."""
+    body = await request.json()
+    node_id = body.get("id", "")
+    if not node_id:
+        return {"status": "error", "message": "No id provided."}
+    if node_id in brain.engram_trace.current_trace:
+        brain.engram_trace.current_trace.discard(node_id)
+        return {"status": "removed", "id": node_id, "trace": list(brain.engram_trace.current_trace)}
+    else:
+        brain.engram_trace.current_trace.add(node_id)
+        return {"status": "added", "id": node_id, "trace": list(brain.engram_trace.current_trace)}
+
 @app.get("/state")
 async def state_endpoint():
     """Formally exposes read-only access scanning current structural memory footprints."""

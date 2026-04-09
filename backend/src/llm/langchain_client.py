@@ -2,11 +2,32 @@ import os
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.messages import SystemMessage, HumanMessage
 from google.genai import types
+import time
+import threading
+from functools import wraps
+
+def trace_timing(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        print(f"Notice: Function '{func.__name__}' started")
+        start_time = time.time()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            end_time = time.time()
+            total_duration = end_time - start_time
+            print(f"Notice: Function '{func.__name__}' finished. Total time: {total_duration:.4f} seconds.")
+    return wrapper
+
+from langchain_upstage import ChatUpstage
+
 
 class LangChainClient:
+    @trace_timing
     def __init__(self):
         self.model = ChatGoogleGenerativeAI(
             model="gemini-3.1-flash-lite-preview",
+            #model="gemini-2.5-flash",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.1
         )
@@ -17,6 +38,7 @@ class LangChainClient:
             output_dimensionality=256
         )
 
+    @trace_timing
     def _get_clean_response(self, system_prompt: str, human_prompt: str) -> str:
         """Unified invocation and extraction logic across all inference modes."""
         sys_msg = SystemMessage(content=system_prompt)
@@ -31,6 +53,7 @@ class LangChainClient:
         content = raw_content.replace('```html', '').replace('```', '').strip()
         return content
 
+    @trace_timing
     def generate_structured_html(self, raw_text: str, compress: bool = False) -> str:
         """
         Uses the LLM to convert raw text into a structured HTML document
@@ -75,6 +98,7 @@ STRUCTURE RULES:
         return self._get_clean_response(system_prompt, human_message)
 
 
+    @trace_timing
     def synthesize_session(self, log_history: list, context_html: str) -> str:
         """
         Merges an active Stage Log (conversation buffer) into the anchoring KB context,
@@ -101,10 +125,12 @@ RULES:
         return self._get_clean_response(system_prompt, human_message)
 
 
+    @trace_timing
     def generate_embeddings(self, text: list):
         """Batch-generates 256-dimensional embeddings for semantic indexing."""
         return self.embedding_model.embed_documents(text)
 
+    @trace_timing
     def generate_response(self, query: str, context: str, history: list, session_history: list = None) -> str:
         """
         Generates a conversational response using the model's own knowledge,

@@ -21,13 +21,15 @@ const TAG_COLORS = {
 
 function KBNode({ data }) {
   const [expanded, setExpanded] = useState(false);
-  const color = TAG_COLORS[data.tag] || '#6b7280';
+  const isRetrieved = data.isRetrieved;
+  // If it's a retrieved node, give it a prominent golden color, else use its default tag color
+  const color = isRetrieved ? '#f9e2af' : (TAG_COLORS[data.tag] || '#6b7280');
   const hasLongText = data.fullText && data.fullText.length > 50;
 
   return (
     <div
       style={{
-        background: '#1e1e2e',
+        background: isRetrieved ? '#2a2631' : '#1e1e2e',
         border: `2px solid ${color}`,
         borderRadius: 8,
         padding: 0,

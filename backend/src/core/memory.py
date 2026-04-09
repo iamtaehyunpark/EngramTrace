@@ -1,6 +1,8 @@
 """
 1. Physical Memory Orchestration (memory.py)
 This layer handles the "Body" of the system—the raw data and its spatial organization.
+
+cd /Users/a/GitHub/EngramTrace/backend && source tmp_venv/bin/activate && python main.py
 """
 
 import numpy as np
@@ -8,17 +10,34 @@ import json
 import os
 from bs4 import BeautifulSoup
 import hashlib
+import time
+import threading
+from functools import wraps
+
+def trace_timing(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        print(f"Notice: Function '{func.__name__}' started")
+        start_time = time.time()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            end_time = time.time()
+            total_duration = end_time - start_time
+            print(f"Notice: Function '{func.__name__}' finished. Total time: {total_duration:.4f} seconds.")
+    return wrapper
 
 class MemoryManager:
     STRUCTURAL_TAGS = {'body', 'main', 'section', 'article', 'div'}
 
-    def __init__(self, kb_path="src/memory/knowledge_base.html", p_embeddings_path="src/memory/p_embeddings.json", working_page_path="src/memory/working_page.txt"):
+    @trace_timing
+    def __init__(self, kb_path="src/memory/knowledge_base.html", p_embeddings_path="src/memory/p_embeddings.json", structural_embeddings_path="src/memory/structural_embeddings.json"):
         self.kb_path = kb_path
         self.p_embeddings_path = p_embeddings_path
-        self.structural_embeddings_path = "src/memory/structural_embeddings.json"
-        self.working_page_path = working_page_path
+        self.structural_embeddings_path = structural_embeddings_path
         self.soup = self._load_or_create_kb()
 
+    @trace_timing
     def wipe(self):
         """Wipes the physical HTML Graph and Embeddings JSON."""
         if os.path.exists(self.kb_path):
@@ -33,6 +52,7 @@ class MemoryManager:
 
 # INITILIZE KNOWLEDGE BASE
     # initialize knowledge base
+    @trace_timing
     def _load_or_create_kb(self):
         """Loads the KB if it exists, otherwise initializes a root skeleton."""
         if os.path.exists(self.kb_path):
@@ -47,6 +67,7 @@ class MemoryManager:
             
         return BeautifulSoup(default_html, "lxml")
 
+    @trace_timing
     def atomizer(self, llm_client, raw_text=None, compress=False):
         """
         Uses the LLM to semantically structure raw text into HTML.
@@ -66,6 +87,7 @@ class MemoryManager:
         # Divert to the central node tracker securing validation loops inherently
         return self._finalize_and_sync(llm_client, hierarchical=True)
 
+    @trace_timing
     def _sectionize(self):
         """
         Deterministic post-processor that converts flat heading+content sibling
@@ -128,6 +150,7 @@ class MemoryManager:
         for section in parent.find_all("section", recursive=False):
             self._wrap_heading_level(section, level + 1)
 
+    @trace_timing
     def _finalize_and_sync(self, llm_client, hierarchical=False):
         """
         Synchronizes structural DOM edits back onto the physical KB.
@@ -152,6 +175,7 @@ class MemoryManager:
         return all_active_ids
 
 
+    @trace_timing
     def rewrite(self, selector: str, updated_content: str):
         """
         Safely swaps interior content of an existing node, or splices new blocks globally.
@@ -203,6 +227,7 @@ class MemoryManager:
         # Use the first 12 characters for a clean localized physical ID
         return f"{prefix}-{hash_digest[:12]}"
 
+    @trace_timing
     def finalize_atomization(self, generated_html: str):
         """
         Processes the AI's HTML, ensuring every node has a stable, manual ID organically!
@@ -219,6 +244,7 @@ class MemoryManager:
             
         return soup.prettify()
 
+    @trace_timing
     def save_kb(self, content):
         """Persists the BeautifulSoup object to the HTML file."""
         os.makedirs(os.path.dirname(self.kb_path), exist_ok=True)
@@ -228,6 +254,7 @@ class MemoryManager:
 
 
     # get all p contents
+    @trace_timing
     def get_all_p_contents(self):
         """Returns a map of {selector_id: text_content} for all p tags."""
         return {p['id']: p.get_text() for p in self.soup.find_all('p')}
@@ -257,6 +284,7 @@ class MemoryManager:
         path_parts.append(f"{tag.name}#{tag.get('id')}")
         return " > ".join(path_parts)
 
+    @trace_timing
     def sync_embeddings_hierarchical(self, llm_client, active_ids):
         """
         Full top-down hierarchical embedding rebuild.
@@ -360,6 +388,7 @@ class MemoryManager:
 
         print(f"[Hierarchical] Persisted {len(p_embedding_map)} p-vectors, {len(structural_persist)} structural vectors")
 
+    @trace_timing
     def sync_embeddings(self, llm_client, active_ids):
         """
         Lightweight stage-update path.
@@ -441,6 +470,7 @@ class MemoryManager:
         with open(self.p_embeddings_path, "w") as f:
             json.dump(embedding_map, f, indent=4)
 
+    @trace_timing
     def semantic_search(self, query_vector, threshold=0.7):
         """
         Compares query vector against all P-embeddings.

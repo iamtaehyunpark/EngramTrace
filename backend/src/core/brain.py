@@ -2,9 +2,26 @@ import json
 import os
 import numpy as np
 from datetime import datetime
+import time
+import threading
+from functools import wraps
+
+def trace_timing(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        print(f"Notice: Function '{func.__name__}' started")
+        start_time = time.time()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            end_time = time.time()
+            total_duration = end_time - start_time
+            print(f"Notice: Function '{func.__name__}' finished. Total time: {total_duration:.4f} seconds.")
+    return wrapper
 from src.core.memory import MemoryManager
 
 class EngramTrace:
+    @trace_timing
     def __init__(self):
         self.current_trace = set() # retrieved selectors in this stage
         self.qa_vecs = [] # qa vectors in this stage
@@ -63,6 +80,7 @@ class EngramTrace:
             pass
         return None
 
+    @trace_timing
     def _get_stage_context(self):
         """
         Returns a structurally minimized subset of the HTML Knowledge Base.
@@ -77,6 +95,7 @@ class EngramTrace:
                 
         return "\n".join([str(p) for p in parents])
     
+    @trace_timing
     def _calculate_stage_drift(self, query_vec):
         """
         Detects if the user is still on the same 'Stage' (topic).
@@ -95,6 +114,7 @@ class EngramTrace:
         if norm_product == 0: return 0
         return np.dot(avg_vec, query_vec) / norm_product
 
+    @trace_timing
     def BufferQAPair(self, query, response, qa_vec=None):
         """
         Appends the latest interaction to the Stage Log and permanent Session Log.
@@ -124,6 +144,7 @@ class EngramTrace:
         with open(self.session_log_path, "w") as f:
             json.dump(session, f)
 
+    @trace_timing
     def start_new_stage(self):
         """
         Starts a new stage by clearing the current stage log and resetting the trace.
@@ -135,6 +156,7 @@ class EngramTrace:
         self.current_trace = set()
         self.qa_vecs = []
 
+    @trace_timing
     def _archive_stage(self, log):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         archive_path = f"src/memory/stage_history/stage_{timestamp}.json"
@@ -144,6 +166,7 @@ class EngramTrace:
 
 
 class Brain:
+    @trace_timing
     def __init__(self, memory_manager: MemoryManager, llm_client, stage_threshold=0.83, search_threshold=0.75):
         self.memory = memory_manager
         self.llm = llm_client
@@ -173,6 +196,7 @@ class Brain:
             except Exception:
                 pass
 
+    @trace_timing
     def consolidate_and_transition(self):
         """
         Merges the ephemeral Stage Log natively via the LLM back into the HTML KB.
@@ -232,6 +256,7 @@ class Brain:
         # 5. Transition log cycle
         self.engram_trace.start_new_stage()
 
+    @trace_timing
     def run_inference(self, query: str, stage_threshold: float = None, search_threshold: float = None):
         """The main cognitive loop: Drift Check -> Retrieval -> Inference -> Buffer."""
         print(f"\n[Brain.run_inference] Firing Cognitive Loop on: '{query[:20]}...'")

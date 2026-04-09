@@ -150,6 +150,9 @@ export default function KBStudio() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [hoveredNodeId, setHoveredNodeId] = useState(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
+  const [retrievedNodeIds, setRetrievedNodeIds] = useState(new Set());
 
   // Load KB on mount
   useEffect(() => {
@@ -160,6 +163,9 @@ export default function KBStudio() {
         if (data.knowledge_base) {
           setHtmlContent(data.knowledge_base);
           setSavedContent(data.knowledge_base);
+        }
+        if (data.engram_trace) {
+          setRetrievedNodeIds(new Set(data.engram_trace));
         }
       } catch (err) {
         setLoadError('Failed to load KB — backend may be down. Editor is empty.');
@@ -173,10 +179,19 @@ export default function KBStudio() {
     if (!htmlContent) return;
     const { nodes: rawNodes, edges: rawEdges } = htmlToGraph(htmlContent);
     if (rawNodes.length === 0) return;
-    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(rawNodes, rawEdges);
+    
+    // Inject retrieved status into node data
+    const markedNodes = rawNodes.map(n => {
+      if (retrievedNodeIds.has(n.id)) {
+        return { ...n, data: { ...n.data, isRetrieved: true } };
+      }
+      return n;
+    });
+
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(markedNodes, rawEdges);
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
-  }, [htmlContent, activeTab]);
+  }, [htmlContent, activeTab, retrievedNodeIds]);
 
   const handleSave = useCallback(async () => {
     setSaveStatus('saving');
@@ -223,7 +238,92 @@ export default function KBStudio() {
     error: '#f38ba8',
   }[saveStatus];
 
+  // Compute styled edges based on hover state and retrieved status
+  const styledEdges = useMemo(() => {
+    const isAnythingHovered = hoveredNodeId || hoveredEdgeId;
+    
+    // Compute full ancestry paths for retrieved nodes
+    const parentMap = {};
+    edges.forEach(e => {
+      parentMap[e.target] = e;
+    });
 
+    const ancestryEdgeIds = new Set();
+    retrievedNodeIds.forEach(id => {
+      let current = id;
+      while (parentMap[current]) {
+        const edge = parentMap[current];
+        ancestryEdgeIds.add(edge.id);
+        current = edge.source;
+      }
+    });
+    
+    return edges.map(edge => {
+      const isHighlighted = 
+        hoveredEdgeId === edge.id || 
+        hoveredNodeId === edge.source || 
+        hoveredNodeId === edge.target;
+
+      const isRetrievedEdge = ancestryEdgeIds.has(edge.id);
+        
+      if (isHighlighted) {
+        return {
+          ...edge,
+          animated: true,
+          style: { 
+            stroke: '#cba6f7', 
+            strokeWidth: 3, 
+            filter: 'drop-shadow(0 0 4px #cba6f7)' 
+          },
+          zIndex: 1000,
+        };
+      }
+      
+      if (isRetrievedEdge) {
+        return {
+          ...edge,
+          animated: true,
+          style: { 
+            stroke: '#f9e2af', // Yellow/Gold for retrieved trace
+            strokeWidth: 2, 
+            filter: 'drop-shadow(0 0 4px #f9e2af)' 
+          },
+          zIndex: 500,
+        };
+      }
+      
+      return {
+        ...edge,
+        animated: false,
+        style: { 
+          stroke: isAnythingHovered ? '#31324488' : '#585b70', 
+          strokeWidth: 1.5,
+          opacity: isAnythingHovered ? 0.3 : 1
+        },
+        zIndex: 1,
+      };
+    });
+  }, [edges, hoveredNodeId, hoveredEdgeId, retrievedNodeIds]);
+
+  // Toggle a node in the backend trace set on click
+  const onNodeClick = useCallback(async (_, node) => {
+    const nodeId = node.id;
+    if (!nodeId || nodeId.startsWith('auto-')) return; // skip nodes without real IDs
+
+    try {
+      const res = await fetch('/trace/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: nodeId }),
+      });
+      const data = await res.json();
+      if (data.trace) {
+        setRetrievedNodeIds(new Set(data.trace));
+      }
+    } catch (err) {
+      console.error('Failed to toggle trace:', err);
+    }
+  }, []);
 
   return (
     <div className="kb-studio">
@@ -302,7 +402,7 @@ export default function KBStudio() {
           <div className="kb-graph-wrap">
             <ReactFlow
               nodes={nodes}
-              edges={edges}
+              edges={styledEdges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes}
@@ -310,6 +410,11 @@ export default function KBStudio() {
               fitViewOptions={{ padding: 0.3 }}
               proOptions={{ hideAttribution: true }}
               style={{ background: '#11111b' }}
+              onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
+              onNodeMouseLeave={() => setHoveredNodeId(null)}
+              onEdgeMouseEnter={(_, edge) => setHoveredEdgeId(edge.id)}
+              onEdgeMouseLeave={() => setHoveredEdgeId(null)}
+              onNodeClick={onNodeClick}
             >
               <Background color="#313244" gap={20} size={1} />
               <Controls
