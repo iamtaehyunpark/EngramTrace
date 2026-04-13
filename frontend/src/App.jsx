@@ -51,6 +51,7 @@ function App() {
   const [inputVal, setInputVal] = useState('');
   const [thresholdVal, setThresholdVal] = useState(0.90);
   const [semanticThresholdVal, setSemanticThresholdVal] = useState(0.70);
+  const [noSearchVal, setNoSearchVal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [serverLogs, setServerLogs] = useState([]);
   const chatEndRef = useRef(null);
@@ -142,7 +143,7 @@ function App() {
       const response = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: text, threshold: Number(thresholdVal), semantic_threshold: Number(semanticThresholdVal) })
+        body: JSON.stringify({ query: text, threshold: Number(thresholdVal), semantic_threshold: Number(semanticThresholdVal), no_search: noSearchVal })
       });
 
       const data = await response.json();
@@ -207,7 +208,7 @@ function App() {
           <div className="chat-box">
             {messages.map((msg, index) => (
               <div key={index} className={`message ${msg.role === 'user' ? 'user-msg' :
-                  msg.role === 'error' ? 'error-msg' : 'system-msg'
+                msg.role === 'error' ? 'error-msg' : 'system-msg'
                 }`}>
                 <b>{msg.role === 'user' ? 'COMMAND:' : msg.role === 'error' ? 'ERROR:' : 'ENGRAM:'}</b>
                 <div className="markdown-content">
@@ -241,9 +242,19 @@ function App() {
               autoComplete="off"
               rows={3}
             />
-            <button onClick={handleSubmit} disabled={isLoading || !inputVal.trim()}>
-              Execute
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end', justifyContent: 'center' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={noSearchVal}
+                  onChange={e => setNoSearchVal(e.target.checked)}
+                />
+                Restrict to current trace
+              </label>
+              <button onClick={handleSubmit} disabled={isLoading || !inputVal.trim()} style={{ height: '100%' }}>
+                Execute
+              </button>
+            </div>
           </div>
         </>
       )}

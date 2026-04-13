@@ -19,8 +19,6 @@ def trace_timing(func):
             print(f"Notice: Function '{func.__name__}' finished. Total time: {total_duration:.4f} seconds.")
     return wrapper
 
-from langchain_upstage import ChatUpstage
-
 
 class LangChainClient:
     @trace_timing

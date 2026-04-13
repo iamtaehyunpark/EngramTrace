@@ -1,6 +1,6 @@
 import os
 import sys
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -16,32 +16,8 @@ if os.path.exists(env_path):
                 except ValueError:
                     continue
 
+# Ensure backend root is on Python path so `api` and `src` resolve properly
 sys.path.append(os.path.dirname(__file__))
-
-from src.core.memory import MemoryManager
-from src.core.brain import Brain
-from src.llm.langchain_client import LangChainClient
-
-import io
-
-class LogCapture(io.StringIO):
-    def __init__(self):
-        super().__init__()
-        self.logs = []
-        self.original_stdout = sys.stdout
-
-    def write(self, text):
-        # Prevent completely blank whitespace pings
-        if text.strip():
-            self.logs.append(text.strip())
-        self.original_stdout.write(text)
-
-    def flush(self):
-        self.original_stdout.flush()
-
-# Globally lock outputs securely through the active array trace dynamically!
-log_capture = LogCapture()
-sys.stdout = log_capture
 
 app = FastAPI(title="EngramTrace API Core")
 
@@ -54,151 +30,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 1. Global Engine Initialization
-print("BOOTING EXTRACTED ENGRAMTRACE KNOWLEDGE GRAPH ENGINE...")
-kb_path = "src/memory/knowledge_base.html"
-p_embeddings_path = "src/memory/p_embeddings.json"
+# Delayed import of routers so sys.path is already updated
+from api.routes import chat, system, memory
 
-print("Starting LLM Models...")
-llm = LangChainClient()
-
-print("Hydrating Matrix Indexes...")
-memory = MemoryManager(kb_path=kb_path, p_embeddings_path=p_embeddings_path)
-
-print("Synchronizing Drift Hooks...")
-brain = Brain(memory_manager=memory, llm_client=llm)
-
-
-@app.get("/logs")
-async def read_logs():
-    """Serves the captured system.stdout arrays precisely sequentially to standard polling clients."""
-    return {"logs": log_capture.logs}
-
-@app.delete("/logs")
-async def clear_logs():
-    """Gracefully resets the global tracker array immediately upon new initialization queries!"""
-    log_capture.logs = []
-    return {"status": "cleared"}
-    
-@app.delete("/memory")
-async def clear_memory():
-    """Wipes the entire KB, stage log, session log, and embedding dictionary."""
-    try:
-        brain.memory.wipe()
-        brain.engram_trace.wipe()
-        return {"status": "success", "message": "Memory fully wiped."}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@app.post("/chat")
-async def chat_endpoint(request: Request):
-    """Binds directly to Brain's Ecphory and Consolidation loop mapping outputs seamlessly to JSON."""
-    body = await request.json()
-    query = body.get("query", "")
-    threshold = body.get("threshold", None)
-    semantic_threshold = body.get("semantic_threshold", None)
-    
-    if threshold is not None:
-        try:
-            threshold = float(threshold)
-        except ValueError:
-            threshold = None
-            
-    if semantic_threshold is not None:
-        try:
-            semantic_threshold = float(semantic_threshold)
-        except ValueError:
-            semantic_threshold = None
-            
-    if not query:
-        return {"response": "Error: Empty query."}
-        
-    try:
-        response = brain.run_inference(query, stage_threshold=threshold, search_threshold=semantic_threshold)
-        return {"response": response}
-    except Exception as e:
-        return {"response": f"Runtime Exception: {str(e)}"}
-
-@app.post("/day-change")
-async def force_day_change():
-    """Forces an immediate atomization of the Knowledge Base and resets the Day Stage cycle natively."""
-    try:
-        stage_log = brain.engram_trace._get_stage_log()
-        if len(stage_log) > 0:
-            brain.consolidate_and_transition()
-        brain.memory.atomizer(brain.llm, compress=True)
-        brain.engram_trace.start_new_stage()
-        return {"status": "success", "message": "Day change forced successfully."}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@app.put("/kb")
-async def save_kb(request: Request):
-    """Accepts raw HTML from the frontend editor, re-parses, finalizes IDs, and rebuilds embeddings."""
-    from bs4 import BeautifulSoup
-    body = await request.json()
-    html_content = body.get("html", "")
-    if not html_content.strip():
-        return {"status": "error", "message": "Empty HTML content"}
-    try:
-        brain.memory.soup = BeautifulSoup(html_content, "lxml")
-        brain.memory._finalize_and_sync(brain.llm, hierarchical=True)
-        return {"status": "success", "message": "KB saved and embeddings rebuilt."}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@app.post("/trace/toggle")
-async def toggle_trace(request: Request):
-    """Toggles a selector in the active engram trace set."""
-    body = await request.json()
-    node_id = body.get("id", "")
-    if not node_id:
-        return {"status": "error", "message": "No id provided."}
-    if node_id in brain.engram_trace.current_trace:
-        brain.engram_trace.current_trace.discard(node_id)
-        return {"status": "removed", "id": node_id, "trace": list(brain.engram_trace.current_trace)}
-    else:
-        brain.engram_trace.current_trace.add(node_id)
-        return {"status": "added", "id": node_id, "trace": list(brain.engram_trace.current_trace)}
-
-@app.get("/state")
-async def state_endpoint():
-    """Formally exposes read-only access scanning current structural memory footprints."""
-    try:
-        # Provide raw KB string directly from MemoryManager's active beautifulsoup object 
-        # (or parse it from the HTML path dynamically ensuring no lock drops happen)
-        kb_content = "<empty matrix>"
-        if os.path.exists(brain.memory.kb_path):
-            with open(brain.memory.kb_path, "r", encoding='utf-8') as f:
-                kb_content = f.read()
-                
-        # Parse running JSON structures tracking immediate logs
-        stage_log = []
-        import json
-        if os.path.exists(brain.engram_trace.stage_log_path):
-            with open(brain.engram_trace.stage_log_path, "r", encoding='utf-8') as f:
-                try:
-                    stage_log = json.load(f)
-                except ValueError:
-                    stage_log = []
-                    
-        session_log = []
-        if os.path.exists(brain.engram_trace.session_log_path):
-            with open(brain.engram_trace.session_log_path, "r", encoding='utf-8') as f:
-                try:
-                    session_log = json.load(f)
-                except ValueError:
-                    session_log = []
-
-        # Return JSON payload dynamically reflecting immediate system configurations
-        return {
-            "knowledge_base": kb_content,
-            "stage_log": stage_log,
-            "session_log": session_log,
-            "engram_trace": list(brain.engram_trace.current_trace)
-        }
-    except Exception as e:
-        return {"error": str(e)}
+app.include_router(chat.router)
+app.include_router(system.router)
+app.include_router(memory.router)
 
 if __name__ == "__main__":
     print("Initiating Headless Router at http://127.0.0.1:8000")

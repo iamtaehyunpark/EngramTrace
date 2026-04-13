@@ -98,6 +98,7 @@ class MemoryManager:
         
         Must run BEFORE finalize_atomization() so sections get deterministic IDs.
         """
+        # TODO: bounding ul with p
         container = self.soup.find(id="root") or self.soup.find("body")
         if not container:
             return
@@ -471,7 +472,7 @@ class MemoryManager:
             json.dump(embedding_map, f, indent=4)
 
     @trace_timing
-    def semantic_search(self, query_vector, threshold=0.7):
+    def semantic_search(self, query_vector, threshold=0.80): # threshold is given with brain.search_threshold
         """
         Compares query vector against all P-embeddings.
         Returns: List of hit IDs that pass the threshold.
@@ -480,6 +481,7 @@ class MemoryManager:
         if not os.path.exists(self.p_embeddings_path):
             return []
 
+        # TODO: maybe other than p tags?
         with open(self.p_embeddings_path, "r") as f:
             embedding_map = json.load(f)
 

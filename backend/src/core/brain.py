@@ -20,6 +20,10 @@ def trace_timing(func):
     return wrapper
 from src.core.memory import MemoryManager
 
+
+
+
+
 class EngramTrace:
     @trace_timing
     def __init__(self):
@@ -165,9 +169,13 @@ class EngramTrace:
             json.dump(log, f)
 
 
+
+
+
+
 class Brain:
     @trace_timing
-    def __init__(self, memory_manager: MemoryManager, llm_client, stage_threshold=0.83, search_threshold=0.75):
+    def __init__(self, memory_manager: MemoryManager, llm_client, stage_threshold=0.83, search_threshold=0.80):
         self.memory = memory_manager
         self.llm = llm_client
         self.stage_threshold = stage_threshold
@@ -257,7 +265,7 @@ class Brain:
         self.engram_trace.start_new_stage()
 
     @trace_timing
-    def run_inference(self, query: str, stage_threshold: float = None, search_threshold: float = None):
+    def run_inference(self, query: str, stage_threshold: float = None, search_threshold: float = None, no_search: bool = False):
         """The main cognitive loop: Drift Check -> Retrieval -> Inference -> Buffer."""
         print(f"\n[Brain.run_inference] Firing Cognitive Loop on: '{query[:20]}...'")
         q_vec = self.llm.generate_embeddings([query])[0]
@@ -269,7 +277,7 @@ class Brain:
         # Force Consolidation if certain amount of q-a pairs have been processed
         stage_log = self.engram_trace._get_stage_log()
         session_log = self.engram_trace._get_session_log()
-        
+
         if len(stage_log) >= 10:
             print("Q-A pairs >= 10. Consolidating Stage...")
             self.consolidate_and_transition()
@@ -295,8 +303,9 @@ class Brain:
 
         # 3. Ecphory
         # Safely extract hits directly from vectorized embeddings lookup
-        hit_ids = self.memory.semantic_search(q_vec, threshold=active_search_threshold)
-        self.engram_trace.current_trace.update(hit_ids)
+        if not no_search:
+            hit_ids = self.memory.semantic_search(q_vec, threshold=active_search_threshold)
+            self.engram_trace.current_trace.update(hit_ids)
         
         working_context = self.engram_trace._get_stage_context()
         stage_history = self.engram_trace._get_stage_log()  # Re-read: consolidation may have cleared it
