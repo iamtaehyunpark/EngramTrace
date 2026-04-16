@@ -134,7 +134,7 @@ class EngramTrace:
         }
         
         # 1. Ephemeral Stage Log (Wiped on drift)
-        if not no_memorize:
+        if not no_memorize: # if no_memorize is True, skip appending to stage log
             stage = self._get_stage_log()
             stage.append(qa_block)
             with open(self.stage_log_path, "w") as f:
@@ -342,15 +342,16 @@ class Brain:
         # Safely extract hits directly from vectorized embeddings lookup
         if not no_search:
             hit_ids = self.memory.semantic_search(q_vec, threshold=active_search_threshold)
-            kw_hit_ids = self.memory.keyword_search(query)
             self.engram_trace.current_trace.update(hit_ids)
-            self.engram_trace.current_trace.update(kw_hit_ids)
+            if len(stage_log) == 0: # Do Keyword Search if stage changed
+                kw_hit_ids = self.memory.keyword_search(query)
+                self.engram_trace.current_trace.update(kw_hit_ids)
         
         working_context = self.engram_trace._get_stage_context()
         stage_history = self.engram_trace._get_stage_log()  # Re-read: consolidation may have cleared it
         
         # Give session history for continuity
-        session_history = session_log[-5:]
+        session_history = session_log[-4:]
         
         # 4. Standard Response 
         response = self.llm.generate_response(

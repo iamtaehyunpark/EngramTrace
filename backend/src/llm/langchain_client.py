@@ -144,7 +144,7 @@ RULES:
 
 You also have access to supplementary memory sources that may contain relevant context from past interactions. Use them naturally — like a person recalling relevant memories — but they are not your only source of knowledge. If the user asks something outside of what's stored in memory, answer freely from your own understanding.
 
-Long-term memory (retrieved from knowledge base):
+Long-term memory (retrieved from knowledge base, might be entirely irrelevant):
 {context if context else "(No relevant memories retrieved)"}
 
 Recent conversation context (current topic buffer):

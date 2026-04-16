@@ -162,7 +162,7 @@ class MemoryManager:
         3. Trigger vector rebuilding
         """
         # Enforce hierarchical DOM structure before ID assignment
-        self._sectionize()
+        # self._sectionize() # skip sectionize for now
 
         finalized_html = self.finalize_atomization(str(self.soup))
         self.soup = BeautifulSoup(finalized_html, "lxml")
