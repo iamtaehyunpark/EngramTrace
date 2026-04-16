@@ -138,16 +138,17 @@ RULES:
         from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
         
         history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in history]) if history else ""
+        session_history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in session_history]) if session_history else ""
 
         system_prompt = f"""You are an intelligent conversational assistant. Answer the user's questions using your full general knowledge.
 
-You also have access to two supplementary memory sources that may contain relevant context from past interactions. Use them naturally — like a person recalling relevant memories — but they are not your only source of knowledge. If the user asks something outside of what's stored in memory, answer freely from your own understanding.
+You also have access to supplementary memory sources that may contain relevant context from past interactions. Use them naturally — like a person recalling relevant memories — but they are not your only source of knowledge. If the user asks something outside of what's stored in memory, answer freely from your own understanding.
 
 Long-term memory (retrieved from knowledge base):
 {context if context else "(No relevant memories retrieved)"}
 
 Recent conversation context (current topic buffer):
-{history_str if history_str else "(New conversation)"}"""
+{history_str if history_str else "(New conversation regarding this topic)"}"""
 
         messages = [SystemMessage(content=system_prompt)]
         

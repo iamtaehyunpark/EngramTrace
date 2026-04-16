@@ -265,21 +265,48 @@ class Brain:
         self.engram_trace.start_new_stage()
 
     @trace_timing
+    def _update_query_vector(self, query_vec_raw, stage_log):
+        """Modifies the raw query vector based on session history and stage state."""
+        q_vec = np.array(query_vec_raw, dtype='float32')
+        if len(stage_log) < 1:
+            # Stage changed: supplement query vector with the highest structural vector of the KB
+            try:
+                root_tag = self.memory.soup.find(id="root") or self.memory.soup.find("body")
+                if root_tag and root_tag.get("id"):
+                    with open(self.memory.structural_embeddings_path, "r") as f:
+                        struc = json.load(f)
+                        root_vec = struc.get(root_tag.get("id"))
+                        if root_vec:
+                            q_vec = q_vec + np.array(root_vec, dtype='float32')
+            except Exception:
+                pass
+        else:
+            # If not a new stage, weight the query vector and the last Q-A pair vector
+            if self.engram_trace.qa_vecs:
+                last_qa_vec = np.array(self.engram_trace.qa_vecs[-1], dtype='float32')
+                q_vec = q_vec * 0.7 + last_qa_vec * 0.3
+                
+        return q_vec.tolist()
+
+    @trace_timing
     def run_inference(self, query: str, stage_threshold: float = None, search_threshold: float = None, no_search: bool = False):
         """The main cognitive loop: Drift Check -> Retrieval -> Inference -> Buffer."""
         print(f"\n[Brain.run_inference] Firing Cognitive Loop on: '{query[:20]}...'")
-        q_vec = self.llm.generate_embeddings([query])[0]
+        q_vec_raw = self.llm.generate_embeddings([query])[0]
         
+        stage_log = self.engram_trace._get_stage_log()
+        session_log = self.engram_trace._get_session_log()
+
+        q_vec = self._update_query_vector(q_vec_raw, stage_log)
+
         # Resolve threshold natively allowing external parameter overrides without breaking Python scopes
         active_stage_threshold = stage_threshold if stage_threshold is not None else self.stage_threshold
         active_search_threshold = search_threshold if search_threshold is not None else self.search_threshold
         
         # Force Consolidation if certain amount of q-a pairs have been processed
-        stage_log = self.engram_trace._get_stage_log()
-        session_log = self.engram_trace._get_session_log()
 
-        if len(stage_log) >= 10:
-            print("Q-A pairs >= 10. Consolidating Stage...")
+        if len(stage_log) >= 15:
+            print("Q-A pairs >= 15. Consolidating Stage...")
             self.consolidate_and_transition()
         elif len(stage_log) == 0 and not (session_log and "last_qa_vec" in session_log[-1]):
             print("Stage log empty and no prior session history. Skip drift check")
@@ -311,7 +338,9 @@ class Brain:
         
         working_context = self.engram_trace._get_stage_context()
         stage_history = self.engram_trace._get_stage_log()  # Re-read: consolidation may have cleared it
-        session_history = session_log[-5:]  # Reuse from earlier read
+        
+        # Give session history for continuity
+        session_history = session_log[-5:]
         
         # 4. Standard Response 
         response = self.llm.generate_response(

@@ -489,16 +489,16 @@ class MemoryManager:
         keywords = set([t for t in tokens if t not in stop_words])
         
         if not keywords:
-            keywords = {query.lower().strip()}
+            return []
 
         hit_scores = {}
-        for p in self.soup.find_all('p'):
-            if p.get('id') and p.get_text(strip=True):
-                text_lower = p.get_text().lower()
+        for tag in self.soup.find_all(True): # Search for all tags not only p
+            if tag.get('id') and tag.get_text(strip=True):
+                text_lower = tag.get_text().lower()
                 # Count how many keywords appear in the text
                 score = sum(1 for kw in keywords if kw in text_lower)
                 if score > 0:
-                    hit_scores[p['id']] = score
+                    hit_scores[tag['id']] = score
                     
         # Sort by most keyword matches
         sorted_hits = sorted(hit_scores.keys(), key=lambda k: hit_scores[k], reverse=True)
