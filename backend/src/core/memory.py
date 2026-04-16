@@ -472,6 +472,39 @@ class MemoryManager:
             json.dump(embedding_map, f, indent=4)
 
     @trace_timing
+    def keyword_search(self, query: str):
+        """
+        Traditional keyword search of the query among KB html.
+        Tokenizes the query and finds nodes containing any of the keywords.
+        Returns: List of hit IDs matching keywords.
+        """
+        print("[MemoryManager.keyword_search] Performing traditional keyword search...")
+        if not self.soup:
+            return []
+
+        import re
+        # Tokenize query: lowercase, alphanumeric words > 2 chars, filter stop words
+        stop_words = {'the', 'and', 'are', 'was', 'for', 'that', 'this', 'with', 'from', 'your', 'have', 'has', 'had', 'but', 'not', 'can', 'will'}
+        tokens = [t.lower() for t in re.findall(r'\b\w+\b', query) if len(t) > 2]
+        keywords = set([t for t in tokens if t not in stop_words])
+        
+        if not keywords:
+            keywords = {query.lower().strip()}
+
+        hit_scores = {}
+        for p in self.soup.find_all('p'):
+            if p.get('id') and p.get_text(strip=True):
+                text_lower = p.get_text().lower()
+                # Count how many keywords appear in the text
+                score = sum(1 for kw in keywords if kw in text_lower)
+                if score > 0:
+                    hit_scores[p['id']] = score
+                    
+        # Sort by most keyword matches
+        sorted_hits = sorted(hit_scores.keys(), key=lambda k: hit_scores[k], reverse=True)
+        return sorted_hits
+
+    @trace_timing
     def semantic_search(self, query_vector, threshold=0.80): # threshold is given with brain.search_threshold
         """
         Compares query vector against all P-embeddings.

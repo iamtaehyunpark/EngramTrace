@@ -305,7 +305,9 @@ class Brain:
         # Safely extract hits directly from vectorized embeddings lookup
         if not no_search:
             hit_ids = self.memory.semantic_search(q_vec, threshold=active_search_threshold)
+            kw_hit_ids = self.memory.keyword_search(query)
             self.engram_trace.current_trace.update(hit_ids)
+            self.engram_trace.current_trace.update(kw_hit_ids)
         
         working_context = self.engram_trace._get_stage_context()
         stage_history = self.engram_trace._get_stage_log()  # Re-read: consolidation may have cleared it
