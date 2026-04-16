@@ -11,6 +11,7 @@ async def chat_endpoint(request: Request):
     threshold = body.get("threshold", None)
     semantic_threshold = body.get("semantic_threshold", None)
     no_search = body.get("no_search", False)
+    no_memorize = body.get("no_memorize", False)
     
     if threshold is not None:
         try:
@@ -28,7 +29,7 @@ async def chat_endpoint(request: Request):
         return {"response": "Error: Empty query."}
         
     try:
-        response = brain.run_inference(query, stage_threshold=threshold, search_threshold=semantic_threshold, no_search=no_search)
+        response = brain.run_inference(query, stage_threshold=threshold, search_threshold=semantic_threshold, no_search=no_search, no_memorize=no_memorize)
         return {"response": response}
     except Exception as e:
         return {"response": f"Runtime Exception: {str(e)}"}

@@ -52,8 +52,11 @@ function App() {
   const [thresholdVal, setThresholdVal] = useState(0.90);
   const [semanticThresholdVal, setSemanticThresholdVal] = useState(0.70);
   const [noSearchVal, setNoSearchVal] = useState(false);
+  const [noMemorizeVal, setNoMemorizeVal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [serverLogs, setServerLogs] = useState([]);
+  const [showWipeDropdown, setShowWipeDropdown] = useState(false);
+  const [wipeOptions, setWipeOptions] = useState({ knowledge_base: true, session_log: true, stage_log: true, current_trace: true });
   const chatEndRef = useRef(null);
 
   // Rehydrate historic dialogue memory array organically!
@@ -80,12 +83,17 @@ function App() {
   }, []);
 
   const handleWipeMemory = async () => {
-    if (!window.confirm("Are you sure you want to completely wipe all logs, vectors, and the Knowledge Base?")) return;
+    if (!window.confirm("Are you sure you want to selectively wipe the chosen memory sectors?")) return;
     try {
-      const res = await fetch('/memory', { method: 'DELETE' });
+      const res = await fetch('/memory', { 
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(wipeOptions)
+      });
       if (res.ok) {
-        setMessages([{ role: 'system', text: '[System Engine Memory Wiped. Virtual Graph matrix successfully initialized...]' }]);
+        setMessages([{ role: 'system', text: '[System Engine Memory selectively Wiped. Matrix re-initialized.]' }]);
         setServerLogs([]);
+        setShowWipeDropdown(false);
         if (currentView !== 'chat') {
           window.location.reload();
         }
@@ -143,7 +151,7 @@ function App() {
       const response = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: text, threshold: Number(thresholdVal), semantic_threshold: Number(semanticThresholdVal), no_search: noSearchVal })
+        body: JSON.stringify({ query: text, threshold: Number(thresholdVal), semantic_threshold: Number(semanticThresholdVal), no_search: noSearchVal, no_memorize: noMemorizeVal })
       });
 
       const data = await response.json();
@@ -183,7 +191,27 @@ function App() {
               onChange={e => setSemanticThresholdVal(e.target.value)}
             />
           </div>
-          <button className="nav-btn danger-btn" onClick={handleWipeMemory}>Wipe</button>
+          <div style={{ position: 'relative' }}>
+            <button className="nav-btn danger-btn" onClick={() => setShowWipeDropdown(!showWipeDropdown)}>Wipe &#9662;</button>
+            {showWipeDropdown && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '0.8rem', borderRadius: '4px', zIndex: 10, display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '180px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'white', marginBottom: '0.2rem' }}>Wipe Selector</span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                  <input type="checkbox" checked={wipeOptions.knowledge_base} onChange={e => setWipeOptions(p => ({ ...p, knowledge_base: e.target.checked }))} /> Knowledge Base (KB)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                  <input type="checkbox" checked={wipeOptions.session_log} onChange={e => setWipeOptions(p => ({ ...p, session_log: e.target.checked }))} /> Session Logs
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                  <input type="checkbox" checked={wipeOptions.stage_log} onChange={e => setWipeOptions(p => ({ ...p, stage_log: e.target.checked }))} /> Stage Logs
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                  <input type="checkbox" checked={wipeOptions.current_trace} onChange={e => setWipeOptions(p => ({ ...p, current_trace: e.target.checked }))} /> Current Trace
+                </label>
+                <button className="danger-btn" style={{ marginTop: '0.5rem', padding: '0.4rem' }} onClick={handleWipeMemory}>Confirm Wipe</button>
+              </div>
+            )}
+          </div>
           <button className="nav-btn warning-btn" onClick={handleForceDayChange}>Day Change</button>
           <div className="nav-divider" />
           <button
@@ -250,6 +278,14 @@ function App() {
                   onChange={e => setNoSearchVal(e.target.checked)}
                 />
                 Restrict to current trace
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={noMemorizeVal}
+                  onChange={e => setNoMemorizeVal(e.target.checked)}
+                />
+                Do not memorize
               </label>
               <button onClick={handleSubmit} disabled={isLoading || !inputVal.trim()} style={{ height: '100%' }}>
                 Execute

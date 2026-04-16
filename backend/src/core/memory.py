@@ -492,7 +492,7 @@ class MemoryManager:
             return []
 
         hit_scores = {}
-        for tag in self.soup.find_all(True): # Search for all tags not only p
+        for tag in self.soup.find_all(['p', 'li']):
             if tag.get('id') and tag.get_text(strip=True):
                 text_lower = tag.get_text().lower()
                 # Count how many keywords appear in the text

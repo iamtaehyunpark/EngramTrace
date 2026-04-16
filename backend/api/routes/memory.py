@@ -4,12 +4,22 @@ from api.deps import brain
 router = APIRouter()
 
 @router.delete("/memory")
-async def clear_memory():
-    """Wipes the entire KB, stage log, session log, and embedding dictionary."""
+async def clear_memory(request: Request):
+    """Selectively wipes KB, stage log, and session log."""
     try:
-        brain.memory.wipe()
-        brain.engram_trace.wipe()
-        return {"status": "success", "message": "Memory fully wiped."}
+        try:
+            body = await request.json()
+            wipe_kb = body.get("knowledge_base", True)
+            wipe_session = body.get("session_log", True)
+            wipe_stage = body.get("stage_log", True)
+            wipe_trace = body.get("current_trace", True)
+        except Exception:
+            wipe_kb = wipe_session = wipe_stage = wipe_trace = True
+
+        if wipe_kb:
+            brain.memory.wipe()
+        brain.engram_trace.wipe(wipe_stage=wipe_stage, wipe_session=wipe_session, wipe_trace=wipe_trace)
+        return {"status": "success", "message": "Memory selectively wiped."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

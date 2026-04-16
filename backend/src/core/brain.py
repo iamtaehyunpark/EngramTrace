@@ -32,24 +32,28 @@ class EngramTrace:
         self.stage_log_path = "src/memory/current_stage_log.json"
         self.session_log_path = "src/memory/session_log.json"
 
-    def wipe(self):
-        self.current_trace = set()
-        self.qa_vecs = []
-        
-        # Unconditionally write empty arrays so UI never hangs waiting for boot files
-        os.makedirs(os.path.dirname(self.stage_log_path), exist_ok=True)
-        with open(self.stage_log_path, "w") as f:
-            json.dump([], f)
+    def wipe(self, wipe_stage=True, wipe_session=True, wipe_trace=True):
+        if wipe_trace:
+            self.current_trace = set()
             
-        with open(self.session_log_path, "w") as f:
-            json.dump([], f)
+        if wipe_stage:
+            self.qa_vecs = []
             
-        # Completely purge archived historical drift stage files
-        history_dir = "src/memory/stage_history"
-        if os.path.exists(history_dir):
-            for file in os.listdir(history_dir):
-                if file.endswith(".json"):
-                    os.remove(os.path.join(history_dir, file))
+            # Unconditionally write empty arrays so UI never hangs waiting for boot files
+            os.makedirs(os.path.dirname(self.stage_log_path), exist_ok=True)
+            with open(self.stage_log_path, "w") as f:
+                json.dump([], f)
+                
+            # Completely purge archived historical drift stage files
+            history_dir = "src/memory/stage_history"
+            if os.path.exists(history_dir):
+                for file in os.listdir(history_dir):
+                    if file.endswith(".json"):
+                        os.remove(os.path.join(history_dir, file))
+                        
+        if wipe_session:
+            with open(self.session_log_path, "w") as f:
+                json.dump([], f)
                     
     def _clear_stage_log(self):
         with open(self.stage_log_path, "w") as f:
@@ -119,7 +123,7 @@ class EngramTrace:
         return np.dot(avg_vec, query_vec) / norm_product
 
     @trace_timing
-    def BufferQAPair(self, query, response, qa_vec=None):
+    def BufferQAPair(self, query, response, qa_vec=None, no_memorize=False):
         """
         Appends the latest interaction to the Stage Log and permanent Session Log.
         """
@@ -130,10 +134,11 @@ class EngramTrace:
         }
         
         # 1. Ephemeral Stage Log (Wiped on drift)
-        stage = self._get_stage_log()
-        stage.append(qa_block)
-        with open(self.stage_log_path, "w") as f:
-            json.dump(stage, f)
+        if not no_memorize:
+            stage = self._get_stage_log()
+            stage.append(qa_block)
+            with open(self.stage_log_path, "w") as f:
+                json.dump(stage, f)
             
         # 2. Permanent Session Log (Continual History)
         session_qa_block = dict(qa_block)
@@ -149,7 +154,7 @@ class EngramTrace:
             json.dump(session, f)
 
     @trace_timing
-    def start_new_stage(self):
+    def start_new_stage(self, preserve_trace=False):
         """
         Starts a new stage by clearing the current stage log and resetting the trace.
         """
@@ -157,7 +162,10 @@ class EngramTrace:
         if log:
             self._archive_stage(log)
         self._clear_stage_log()
-        self.current_trace = set()
+        
+        if not preserve_trace:
+            self.current_trace = set()
+            
         self.qa_vecs = []
 
     @trace_timing
@@ -205,7 +213,7 @@ class Brain:
                 pass
 
     @trace_timing
-    def consolidate_and_transition(self):
+    def consolidate_and_transition(self, preserve_trace=False):
         """
         Merges the ephemeral Stage Log natively via the LLM back into the HTML KB.
         """
@@ -262,7 +270,7 @@ class Brain:
         self.memory._finalize_and_sync(self.llm)
         
         # 5. Transition log cycle
-        self.engram_trace.start_new_stage()
+        self.engram_trace.start_new_stage(preserve_trace=preserve_trace)
 
     @trace_timing
     def _update_query_vector(self, query_vec_raw, stage_log):
@@ -291,15 +299,13 @@ class Brain:
         return q_vec.tolist()
 
     @trace_timing
-    def run_inference(self, query: str, stage_threshold: float = None, search_threshold: float = None, no_search: bool = False):
+    def run_inference(self, query: str, stage_threshold: float = None, search_threshold: float = None, no_search: bool = False, no_memorize: bool = False):
         """The main cognitive loop: Drift Check -> Retrieval -> Inference -> Buffer."""
         print(f"\n[Brain.run_inference] Firing Cognitive Loop on: '{query[:20]}...'")
-        q_vec_raw = self.llm.generate_embeddings([query])[0]
+        q_vec = self.llm.generate_embeddings([query])[0]
         
         stage_log = self.engram_trace._get_stage_log()
         session_log = self.engram_trace._get_session_log()
-
-        q_vec = self._update_query_vector(q_vec_raw, stage_log)
 
         # Resolve threshold natively allowing external parameter overrides without breaking Python scopes
         active_stage_threshold = stage_threshold if stage_threshold is not None else self.stage_threshold
@@ -309,7 +315,7 @@ class Brain:
         # TODO: parallelize this process
         if len(stage_log) >= 15:
             print("Q-A pairs >= 15. Consolidating Stage...")
-            self.consolidate_and_transition()
+            self.consolidate_and_transition(preserve_trace=no_search)
         elif len(stage_log) == 0 and not (session_log and "last_qa_vec" in session_log[-1]):
             print("Stage log empty and no prior session history. Skip drift check")
         else:
@@ -323,12 +329,14 @@ class Brain:
                 if last_stage_time and (datetime.now() - last_stage_time).total_seconds() > 4000:
                     print("day changed")
                     if len(stage_log) > 0:
-                        self.consolidate_and_transition()
+                        self.consolidate_and_transition(preserve_trace=no_search)
                     self.memory.atomizer(self.llm, compress=True)
                 else:
                     print(f"Topic Drift Detected ({similarity:.2f}). Consolidating Stage...")
-                    self.consolidate_and_transition()
+                    self.consolidate_and_transition(preserve_trace=no_search)
 
+        # Update query vector with the current stage log for semantic search
+        q_vec = self._update_query_vector(q_vec, stage_log)
 
         # 3. Ecphory
         # Safely extract hits directly from vectorized embeddings lookup
@@ -360,6 +368,6 @@ class Brain:
         if len(self.engram_trace.qa_vecs) > 3:
             self.engram_trace.qa_vecs.pop(0)
 
-        self.engram_trace.BufferQAPair(query, response, qa_vec=qa_vec)
+        self.engram_trace.BufferQAPair(query, response, qa_vec=qa_vec, no_memorize=no_memorize)
         
         return response
