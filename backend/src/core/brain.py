@@ -269,17 +269,19 @@ class Brain:
         """Modifies the raw query vector based on session history and stage state."""
         q_vec = np.array(query_vec_raw, dtype='float32')
         if len(stage_log) < 1:
-            # Stage changed: supplement query vector with the highest structural vector of the KB
-            try:
-                root_tag = self.memory.soup.find(id="root") or self.memory.soup.find("body")
-                if root_tag and root_tag.get("id"):
-                    with open(self.memory.structural_embeddings_path, "r") as f:
-                        struc = json.load(f)
-                        root_vec = struc.get(root_tag.get("id"))
-                        if root_vec:
-                            q_vec = q_vec + np.array(root_vec, dtype='float32')
-            except Exception:
-                pass
+            # # Stage changed: supplement query vector with the highest structural vector of the KB
+            # Considering query can be totally regardless of the KB, 
+            # I removed this part. 
+            # try:
+            #     root_tag = self.memory.soup.find(id="root") or self.memory.soup.find("body")
+            #     if root_tag and root_tag.get("id"):
+            #         with open(self.memory.structural_embeddings_path, "r") as f:
+            #             struc = json.load(f)
+            #             root_vec = struc.get(root_tag.get("id"))
+            #             if root_vec:
+            #                 q_vec = q_vec + np.array(root_vec, dtype='float32')
+            # except Exception:
+            pass
         else:
             # If not a new stage, weight the query vector and the last Q-A pair vector
             if self.engram_trace.qa_vecs:
@@ -304,7 +306,7 @@ class Brain:
         active_search_threshold = search_threshold if search_threshold is not None else self.search_threshold
         
         # Force Consolidation if certain amount of q-a pairs have been processed
-
+        # TODO: parallelize this process
         if len(stage_log) >= 15:
             print("Q-A pairs >= 15. Consolidating Stage...")
             self.consolidate_and_transition()

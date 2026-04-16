@@ -1,6 +1,6 @@
 # EngramTrace — Technical Deep Dive Report
 
-**Date:** April 6, 2026  
+**Date:** April 15, 2026  
 **Repository:** [github.com/iamtaehyunpark/EngramTrace](https://github.com/iamtaehyunpark/EngramTrace)
 
 ---
@@ -145,10 +145,10 @@ sequenceDiagram
         Note over Brain: → Phase 3 (Consolidation)
     end
     
-    Note over Brain: Step 2: Ecphory (Semantic Retrieval)
-    Brain->>MM: semantic_search(q_vec, threshold)
-    MM->>MM: Cosine similarity vs all p_embeddings
-    MM-->>Brain: hit_ids (matching <p> tag IDs)
+    Note over Brain: Step 2: Ecphory (Dual Retrieval)
+    Brain->>MM: semantic_search(q_vec, threshold) & keyword_search(query)
+    MM->>MM: Vector similarity + Token frequency intersection
+    MM-->>Brain: hit_ids (matching node IDs)
     Brain->>ET: current_trace.update(hit_ids)
     ET->>ET: _get_stage_context() → extract parent HTML
     
@@ -175,6 +175,8 @@ sequenceDiagram
    - `search_threshold` (default 0.75): Minimum cosine similarity to retrieve a `<p>` tag from the KB
 
 3. **Session Log Persistence:** The `last_qa_vec` field is maintained as a rolling pointer — only the most recent session log entry carries it. When a new entry is written, the field is deleted from the previous entry and added to the new one.
+
+4. **Dynamic Query Vector Weighting:** The raw query vector (`q_vec`) is structurally bounded. For a new stage, it is added to the highest KB structural vector (e.g. root) to proactively anchor it. For ongoing sessions, it is weighted (70% current query, 30% previous QA vector) to maintain continuous topic trajectory smoothly.
 
 ---
 
@@ -264,6 +266,7 @@ The `compress=True` flag activates a different LLM prompt that focuses on **reor
 | `sync_embeddings_hierarchical(llm_client, active_ids)` | Full top-down rebuild. Batch embeds all structural ancestors + p tags, then sums vectors with memoization. Writes both `p_embeddings.json` and `structural_embeddings.json`. |
 | `sync_embeddings(llm_client, active_ids)` | Lightweight stage-update path. Loads structural cache read-only, sums new p tags against cached parent vectors. |
 | `semantic_search(query_vector, threshold)` | Vectorized NumPy cosine similarity against all p embeddings. Returns matching IDs. |
+| `keyword_search(query)` | Traditional token-based search applying stop-word reduction across all Knowledge Base tags dynamically. |
 | `rewrite(selector, html)` | DOM mutation: replaces existing nodes by ID match, or grafts new nodes to root if no match found. |
 | `finalize_atomization(html)` | Ensures every structural tag has a deterministic SHA-256-based ID |
 
@@ -468,4 +471,4 @@ npm run dev             # Starts on http://localhost:5173, proxies to backend
 
 ---
 
-*This report reflects the codebase state as of April 6, 2026. All file references link directly to the source.*
+*This report reflects the codebase state as of April 15, 2026. All file references link directly to the source.*

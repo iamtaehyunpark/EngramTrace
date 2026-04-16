@@ -14,6 +14,8 @@ import time
 import threading
 from functools import wraps
 
+from src.utils.nlp import nltk_stop_words, lemmatizer, word_tokenize
+
 def trace_timing(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -482,11 +484,9 @@ class MemoryManager:
         if not self.soup:
             return []
 
-        import re
-        # Tokenize query: lowercase, alphanumeric words > 2 chars, filter stop words
-        stop_words = {'the', 'and', 'are', 'was', 'for', 'that', 'this', 'with', 'from', 'your', 'have', 'has', 'had', 'but', 'not', 'can', 'will'}
-        tokens = [t.lower() for t in re.findall(r'\b\w+\b', query) if len(t) > 2]
-        keywords = set([t for t in tokens if t not in stop_words])
+        # NLTK integration for aggressive lemmatized filtering
+        tokens = word_tokenize(query)
+        keywords = {lemmatizer.lemmatize(t.lower()) for t in tokens if t.isalnum() and t.lower() not in nltk_stop_words and len(t) > 2}
         
         if not keywords:
             return []
