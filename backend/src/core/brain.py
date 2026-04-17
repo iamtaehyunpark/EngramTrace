@@ -27,10 +27,58 @@ from src.core.memory import MemoryManager
 class EngramTrace:
     @trace_timing
     def __init__(self):
-        self.current_trace = set() # retrieved selectors in this stage
-        self.qa_vecs = [] # qa vectors in this stage
-        self.stage_log_path = "src/memory/current_stage_log.json"
-        self.session_log_path = "src/memory/session_log.json"
+        self.sessions_dir = "src/memory/sessions"
+        os.makedirs(self.sessions_dir, exist_ok=True)
+        self.sessions = {}
+        
+        old_session_log = "src/memory/session_log.json"
+        if os.path.exists(old_session_log) and not os.path.exists(f"{self.sessions_dir}/default.json"):
+            import shutil
+            shutil.move(old_session_log, f"{self.sessions_dir}/default.json")
+            
+        old_stage_log = "src/memory/current_stage_log.json"
+        if os.path.exists(old_stage_log) and not os.path.exists(f"{self.sessions_dir}/default_stage.json"):
+            import shutil
+            shutil.move(old_stage_log, f"{self.sessions_dir}/default_stage.json")
+            
+        self.set_session("default")
+
+    def set_session(self, session_id: str):
+        self.active_session_id = session_id
+        
+        if session_id not in self.sessions:
+            self.sessions[session_id] = {
+                "current_trace": set(),
+                "qa_vecs": []
+            }
+            
+        self.session_log_path = f"{self.sessions_dir}/{session_id}.json"
+        if not os.path.exists(self.session_log_path):
+            with open(self.session_log_path, "w") as f:
+                json.dump([], f)
+                
+        self.stage_log_path = f"{self.sessions_dir}/{session_id}_stage.json"
+        if not os.path.exists(self.stage_log_path):
+            with open(self.stage_log_path, "w") as f:
+                json.dump([], f)
+
+    @property
+    def current_trace(self):
+        return self.sessions[self.active_session_id]["current_trace"]
+        
+    @current_trace.setter
+    def current_trace(self, value):
+        self.sessions[self.active_session_id]["current_trace"] = value
+        
+    @property
+    def qa_vecs(self):
+        return self.sessions[self.active_session_id]["qa_vecs"]
+        
+    @qa_vecs.setter
+    def qa_vecs(self, value):
+        self.sessions[self.active_session_id]["qa_vecs"] = value
+
+
 
     def wipe(self, wipe_stage=True, wipe_session=True, wipe_trace=True):
         if wipe_trace:

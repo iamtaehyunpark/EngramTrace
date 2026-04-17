@@ -33,6 +33,10 @@ export default defineConfig({
       '/trace': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+      },
+      '/sessions': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
       }
     }
   }

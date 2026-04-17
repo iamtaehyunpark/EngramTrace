@@ -66,3 +66,47 @@ async def state_endpoint():
         }
     except Exception as e:
         return {"error": str(e)}
+
+@router.get("/sessions")
+async def list_sessions():
+    """Lists all available sessions and the currently active one."""
+    sessions_dir = "src/memory/sessions"
+    os.makedirs(sessions_dir, exist_ok=True)
+    sessions = []
+    for f in os.listdir(sessions_dir):
+        if f.endswith(".json") and not f.endswith("_stage.json"):
+            sessions.append(f[:-5])
+    return {
+        "sessions": sessions,
+        "active_session": brain.engram_trace.active_session_id
+    }
+
+@router.post("/sessions/{session_id}")
+async def select_session(session_id: str):
+    """Sets the active session, creating it if it doesn't exist."""
+    try:
+        brain.engram_trace.set_session(session_id)
+        return {"status": "success", "active_session": session_id}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """Deletes a session and its stage log. Switches back to 'default' if active."""
+    try:
+        import shutil
+        sessions_dir = "src/memory/sessions"
+        s_file = f"{sessions_dir}/{session_id}.json"
+        stage_file = f"{sessions_dir}/{session_id}_stage.json"
+        if os.path.exists(s_file): os.remove(s_file)
+        if os.path.exists(stage_file): os.remove(stage_file)
+        
+        if session_id in brain.engram_trace.sessions:
+            del brain.engram_trace.sessions[session_id]
+            
+        if brain.engram_trace.active_session_id == session_id:
+            brain.engram_trace.set_session("default")
+            
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

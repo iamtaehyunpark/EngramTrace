@@ -179,7 +179,7 @@ export default function KBStudio() {
     if (!htmlContent) return;
     const { nodes: rawNodes, edges: rawEdges } = htmlToGraph(htmlContent);
     if (rawNodes.length === 0) return;
-    
+
     // Inject retrieved status into node data
     const markedNodes = rawNodes.map(n => {
       if (retrievedNodeIds.has(n.id)) {
@@ -241,7 +241,7 @@ export default function KBStudio() {
   // Compute styled edges based on hover state and retrieved status
   const styledEdges = useMemo(() => {
     const isAnythingHovered = hoveredNodeId || hoveredEdgeId;
-    
+
     // Compute full ancestry paths for retrieved nodes
     const parentMap = {};
     edges.forEach(e => {
@@ -257,46 +257,46 @@ export default function KBStudio() {
         current = edge.source;
       }
     });
-    
+
     return edges.map(edge => {
-      const isHighlighted = 
-        hoveredEdgeId === edge.id || 
-        hoveredNodeId === edge.source || 
+      const isHighlighted =
+        hoveredEdgeId === edge.id ||
+        hoveredNodeId === edge.source ||
         hoveredNodeId === edge.target;
 
       const isRetrievedEdge = ancestryEdgeIds.has(edge.id);
-        
+
       if (isHighlighted) {
         return {
           ...edge,
           animated: true,
-          style: { 
-            stroke: '#cba6f7', 
-            strokeWidth: 3, 
-            filter: 'drop-shadow(0 0 4px #cba6f7)' 
+          style: {
+            stroke: '#cba6f7',
+            strokeWidth: 3,
+            filter: 'drop-shadow(0 0 4px #cba6f7)'
           },
           zIndex: 1000,
         };
       }
-      
+
       if (isRetrievedEdge) {
         return {
           ...edge,
           animated: true,
-          style: { 
+          style: {
             stroke: '#f9e2af', // Yellow/Gold for retrieved trace
-            strokeWidth: 2, 
-            filter: 'drop-shadow(0 0 4px #f9e2af)' 
+            strokeWidth: 2,
+            filter: 'drop-shadow(0 0 4px #f9e2af)'
           },
           zIndex: 500,
         };
       }
-      
+
       return {
         ...edge,
         animated: false,
-        style: { 
-          stroke: isAnythingHovered ? '#31324488' : '#585b70', 
+        style: {
+          stroke: isAnythingHovered ? '#31324488' : '#585b70',
           strokeWidth: 1.5,
           opacity: isAnythingHovered ? 0.3 : 1
         },
