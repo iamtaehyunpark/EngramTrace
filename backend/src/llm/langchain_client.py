@@ -1,5 +1,6 @@
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+# from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.messages import SystemMessage, HumanMessage
 from google.genai import types
 import time
@@ -29,12 +30,17 @@ class LangChainClient:
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.1
         )
-
         self.embedding_model = GoogleGenerativeAIEmbeddings(
             model="gemini-embedding-001",
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             output_dimensionality=256
         )
+        # # Local embedding model
+        # self.embedding_model = HuggingFaceEmbeddings(
+        #     model_name="jinaai/jina-embeddings-v5-text-small",
+        #     model_kwargs={'trust_remote_code': True},
+        #     encode_kwargs={'task': 'retrieval', 'truncate_dim': 256}
+        # )
 
     @trace_timing
     def _get_clean_response(self, system_prompt: str, human_prompt: str) -> str:
@@ -125,7 +131,7 @@ RULES:
 
     @trace_timing
     def generate_embeddings(self, text: list):
-        """Batch-generates 256-dimensional embeddings for semantic indexing."""
+        """Batch-generates embeddings for semantic indexing."""
         return self.embedding_model.embed_documents(text)
 
     @trace_timing

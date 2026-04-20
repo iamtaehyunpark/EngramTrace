@@ -360,7 +360,7 @@ class MemoryManager:
                 if parent_ancestors:
                     parent_id = parent_ancestors[-1].get('id')
                     if parent_id and parent_id in structural_cache:
-                        structural_cache[nid] = raw + structural_cache[parent_id]
+                        structural_cache[nid] = raw * 0.7 + structural_cache[parent_id] * 0.3
                     else:
                         structural_cache[nid] = raw  # parent not cached, use raw
                 else:
@@ -458,7 +458,7 @@ class MemoryManager:
                 parent_id = new_parent_ids[i]
                 if parent_id and parent_id in structural_cache:
                     parent_vec = np.array(structural_cache[parent_id], dtype='float32')
-                    final_vec = (raw_vec + parent_vec).tolist()
+                    final_vec = (raw_vec * 0.7 + parent_vec * 0.3).tolist()
                 else:
                     final_vec = raw_vec.tolist()
 
@@ -539,4 +539,7 @@ class MemoryManager:
 
         # 3. Filter by threshold
         mask = similarities >= threshold
+        # if no match, return top-3
+        if len(np.where(mask)[0]) == 0:
+            return [ids[i] for i in np.argsort(similarities)[-3:]]
         return [ids[i] for i in np.where(mask)[0]]

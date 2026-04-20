@@ -35,3 +35,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# LongMemEval
+LongMemEval/
+longmemeval_*
+*.sh
+*.log
+*.txt
+*.jsonl
