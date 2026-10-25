@@ -1,9 +1,4 @@
-"""
-1. Physical Memory Orchestration (memory.py)
-This layer handles the "Body" of the system—the raw data and its spatial organization.
-
-cd /Users/a/GitHub/EngramTrace/backend && source tmp_venv/bin/activate && python main.py
-"""
+"""HTML knowledge storage, structural embeddings, and retrieval."""
 
 import numpy as np
 import json
@@ -11,7 +6,6 @@ import os
 from bs4 import BeautifulSoup
 import hashlib
 import time
-import threading
 from functools import wraps
 
 from src.utils.nlp import nltk_stop_words, lemmatizer, word_tokenize
@@ -52,8 +46,6 @@ class MemoryManager:
         # Reinitialize skeleton
         self.soup = self._load_or_create_kb()
 
-# INITILIZE KNOWLEDGE BASE
-    # initialize knowledge base
     @trace_timing
     def _load_or_create_kb(self):
         """Loads the KB if it exists, otherwise initializes a root skeleton."""
@@ -90,80 +82,13 @@ class MemoryManager:
         return self._finalize_and_sync(llm_client, hierarchical=True)
 
     @trace_timing
-    def _sectionize(self):
-        """
-        Deterministic post-processor that converts flat heading+content sibling
-        sequences into nested <section> blocks.
-        
-        Before: <body> <h1> <h2> <p> <p> <h3> <p> <h2> <p> </body>
-        After:  <body> <section><h1> <section><h2> <p> <p> <section><h3> <p></section></section> <section><h2> <p></section></section></body>
-        
-        Must run BEFORE finalize_atomization() so sections get deterministic IDs.
-        """
-        # TODO: bounding ul with p
-        container = self.soup.find(id="root") or self.soup.find("body")
-        if not container:
-            return
-        self._wrap_heading_level(container, 1)
-
-    def _wrap_heading_level(self, parent, level):
-        """
-        Groups direct children of `parent` that are headed by <hN> into <section> tags.
-        Recurses into each created section for the next heading level.
-        """
-        if level > 6:
-            return
-
-        h_tag = f"h{level}"
-
-        # Check if there are any direct-child headings at this level
-        if not parent.find_all(h_tag, recursive=False):
-            # No headings at this level — try next level down
-            self._wrap_heading_level(parent, level + 1)
-            return
-
-        # Extract all direct children from the tree (detach)
-        children = list(parent.children)
-        for child in children:
-            child.extract()
-
-        current_section = None
-
-        for child in children:
-            is_heading = hasattr(child, 'name') and child.name == h_tag
-            is_already_section = hasattr(child, 'name') and child.name == 'section'
-
-            if is_heading:
-                # Start a new section for this heading
-                current_section = self.soup.new_tag("section")
-                parent.append(current_section)
-                current_section.append(child)
-            elif is_already_section:
-                # Already wrapped — append as-is, don't double-wrap
-                parent.append(child)
-                current_section = None
-            elif current_section is not None:
-                # Content belonging to the current heading's section
-                current_section.append(child)
-            else:
-                # Preamble content before any heading at this level
-                parent.append(child)
-
-        # Recurse into each created section for the next heading level
-        for section in parent.find_all("section", recursive=False):
-            self._wrap_heading_level(section, level + 1)
-
-    @trace_timing
     def _finalize_and_sync(self, llm_client, hierarchical=False):
         """
         Synchronizes structural DOM edits back onto the physical KB.
-        1. Sectionize flat headings into nested <section> blocks
-        2. Assign deterministic IDs to all nodes
-        3. Trigger vector rebuilding
+        1. Assign deterministic IDs to nodes missing them
+        2. Persist HTML
+        3. Synchronize paragraph vectors
         """
-        # Enforce hierarchical DOM structure before ID assignment
-        # self._sectionize() # skip sectionize for now
-
         finalized_html = self.finalize_atomization(str(self.soup))
         self.soup = BeautifulSoup(finalized_html, "lxml")
         self.save_kb(finalized_html)

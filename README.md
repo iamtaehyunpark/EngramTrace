@@ -1,158 +1,96 @@
 # EngramTrace
 
-A non-parametric cognitive memory system that augments Large Language Models with persistent, structured long-term memory. Unlike standard RAG systems that use flat vector stores, EngramTrace maintains a **living HTML document** as its knowledge base, where the DOM structure itself encodes semantic relationships.
+**Structured long-term memory for conversational language models.**
 
-## 🧠 Cognitive Philosophy
-EngramTrace mimics the human biological cycle of memory consolidation:
-1. **Encoding**: Conversations are buffered in a temporary Stage Log.
-2. **Retrieval (Ecphory)**: Relevant knowledge is retrieved via dual-mode search — hierarchical vector similarity combined with NLTK-powered keyword search.
-3. **Reconsolidation**: When a topic shift (drift) is detected, the buffer is synthesized and merged back into the long-term HTML structure.
+EngramTrace is a research prototype that stores conversational knowledge in an editable HTML tree. It retrieves relevant paragraphs with their surrounding structure and consolidates conversations into that tree when the topic changes, without updating model weights.
 
----
+**[Read the final technical report →](engramtrace_technical_report.md)**
 
-## 🏗 Architecture Overview
+The report explains the research question, architecture, memory lifecycle, implementation, verification, and limitations. It can be read on GitHub without installing or running the project.
+
+## Project at a glance
+
+- **Inspectable memory:** an HTML knowledge base with stable content-derived IDs, an editor, and an interactive DOM graph.
+- **Context-aware retrieval:** paragraph embeddings blended with structural ancestors, supplemented by keyword search.
+- **Incremental consolidation:** topic drift or a 15-turn buffer triggers a merge into persistent memory.
+- **Session continuity:** separate conversation logs share a common knowledge base.
+
+This repository contains the implementation and report. It does **not** include validated benchmark scores or establish an accuracy advantage over other memory systems. The application is a local research console with a shared engine and no authentication.
 
 ```mermaid
-graph TB
-    subgraph Frontend["Frontend (React 19 + Vite 8)"]
-        UI["Chat Console / KB Studio / Inspector"]
-    end
-    
-    subgraph API["FastAPI Server (Modular APIRouter)"]
-        CHAT["/chat"]
-        STATE["/state · /logs · /day-change"]
-        MEM["/memory · /kb · /trace"]
-        SESS["/sessions"]
-    end
-    
-    subgraph Core["Cognitive Core"]
-        BRAIN["Brain (Orchestrator)"]
-        ET["EngramTrace (Stage & Session Manager)"]
-        MM["MemoryManager (DOM / Vectors / Keywords)"]
-    end
-    
-    subgraph LLM["LLM Layer"]
-        GEMINI["Gemini 3.1 Flash-Lite (Generation)"]
-        EMB["Gemini Embedding-001 (256-dim)"]
-    end
-    
-    UI --> CHAT & STATE & MEM & SESS
-    CHAT --> BRAIN
-    BRAIN --> ET & MM
-    BRAIN --> GEMINI & EMB
+flowchart LR
+    UI[React research console] --> API[FastAPI]
+    API --> Brain[Memory orchestrator]
+    Brain --> KB[HTML knowledge base]
+    Brain --> Index[Paragraph and structural vectors]
+    Brain --> Logs[Session and stage logs]
+    Brain --> Gemini[Gemini generation and embeddings]
 ```
 
-### Key Technical Innovations
-- **Hierarchical Embedding Summation**: Paragraph vectors are blended with their structural ancestors (70% local / 30% parent), giving each leaf node implicit awareness of its context within the knowledge tree.
-- **Dual Retrieval Strategy**: Semantic vector search (with top-3 fallback) + NLTK-powered keyword search (lemmatized, stop-word filtered) activated on stage transitions.
-- **Dual-Threshold Control**: Independent triggers for **Stage Drift** (topic switching, default 0.83) and **Semantic Search** (knowledge retrieval, default 0.80).
-- **Multi-Session Support**: Named chat sessions with independent stage/session logs and per-session ephemeral state, sharing a common knowledge base.
-- **Homeostatic Day System**: Automatic compression and reorganization of the entire knowledge base after prolonged inactivity (>67 min).
+## Run locally
 
----
+Use **Python 3.13** and **Node.js 22.12+**. Live inference requires a Google API key with access to the configured Gemini models and may incur API charges. Reading the report and running the mock tests require no key.
 
-## 🚀 System Pipeline
-
-### 1. Initialization (Atomization)
-The system converts unstructured information into a structured HTML document via LLM. Every node is assigned a deterministic SHA-256-based ID, and hierarchical embeddings are batch-generated and summed top-down using memoization to map the initial conceptual landscape.
-
-### 2. Retrieval & Inference (In-Stage)
-Every interaction triggers a drift check against the running mean of recent Q-A pair embeddings (stack of 3). If the topic is consistent, relevant context is retrieved via Ecphory — a combination of vectorized cosine similarity search and NLTK keyword matching. The query vector is blended with the last Q-A vector (70/30) to maintain topic trajectory. Responses can be generated with `no_search` (restrict to current trace) or `no_memorize` (skip stage log) modes.
-
-### 3. Consolidation (Transition)
-When topic drift is detected or the stage log reaches 15 entries, the system synthesizes the conversation buffer via LLM and grafts updated/new HTML fragments into the DOM through surgical rewrite mutations. Root protection prevents catastrophic full-KB overwrites.
-
-### 4. Homeostasis (Day Change)
-On significant time gaps (>4000s), the system performs a restructuring pass. The LLM reorganizes and deduplicates the entire KB while preserving substantive content and giving priority to the most recent information.
-
----
-
-## 🖥 Frontend Features
-
-- **Chat Console**: Multi-line input, ReactMarkdown rendering, live server log streaming (polled every 400ms), inference control toggles
-- **KB Studio**: 
-  - **HTML Editor** — CodeMirror with Catppuccin theme, syntax highlighting, source/preview toggle, save-to-backend with full embedding rebuild
-  - **DOM Graph** — Interactive React Flow visualization with dagre auto-layout, color-coded nodes by tag type, click-to-toggle trace membership, retrieved node ancestry highlighting
-- **Data Inspector**: Read-only JSON view of trace set, stage log, and session log
-- **Session Sidebar**: Create, switch, and delete named chat sessions
-- **Header Controls**: Drift/Search threshold inputs, selective memory wipe, force day change
-
----
-
-## 🛠 Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Backend** | FastAPI, LangChain, BeautifulSoup4, NumPy, NLTK |
-| **Frontend** | React 19, Vite 8, React Flow, CodeMirror, dagre, react-markdown |
-| **AI** | Google Gemini 3.1 Flash-Lite, Gemini Embedding-001 (256-dim) |
-| **Evaluation** | LongMemEval benchmark, GPT-4o answer scoring |
-
----
-
-## 📊 Evaluation
-
-EngramTrace is benchmarked against **LongMemEval**, a standardized evaluation framework for long-term conversational memory:
+From the repository root:
 
 ```bash
-# Run full evaluation
-python evaluate_engramtrace.py --dataset LongMemEval/data/longmemeval_oracle.json --limit 100 --output results.jsonl
-
-# Score with GPT-4o
-python LongMemEval/src/evaluation/evaluate_qa.py --input results.jsonl
+python3.13 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements.txt
+python -m nltk.downloader stopwords punkt_tab wordnet
+cp backend/.env.example backend/.env
+# Set GOOGLE_API_KEY in backend/.env, then:
+cd backend
+python main.py
 ```
 
-Test categories: single-session-assistant, single-session-user, multi-session, temporal-reasoning, knowledge-update, single-session-preference.
+In a second terminal, from the repository root:
 
----
-
-## 🔧 Getting Started
-
-### Prerequisites
-- Python 3.13+
-- Node.js 20+
-- Google AI API Key (`GOOGLE_API_KEY`)
-
-### Installation
-1. **Backend**:
-   ```bash
-   cd backend
-   python -m venv tmp_venv && source tmp_venv/bin/activate
-   pip install -r requirements.txt
-   # Create .env with: GOOGLE_API_KEY=your_key_here
-   python main.py          # Starts on http://127.0.0.1:8000
-   ```
-2. **Frontend**:
-   ```bash
-   cd frontend
-   npm install
-   npm run dev             # Starts on http://localhost:5173, proxies to backend
-   ```
-
-### Project Structure
-```
-EngramTrace/
-├── backend/
-│   ├── main.py                     # FastAPI app factory
-│   ├── api/
-│   │   ├── deps.py                 # Global singletons & LogCapture
-│   │   └── routes/                 # chat.py, memory.py, system.py
-│   ├── src/
-│   │   ├── core/                   # brain.py (EngramTrace + Brain), memory.py
-│   │   ├── llm/                    # langchain_client.py
-│   │   ├── utils/                  # nlp.py (NLTK)
-│   │   └── memory/                 # KB, embeddings, sessions/, stage_history/
-│   └── tests/
-├── frontend/
-│   └── src/                        # App.jsx, KBStudio.jsx, KBNode.jsx
-└── engramtrace_technical_report.md # Full technical deep dive
+```bash
+cd frontend
+npm ci
+npm run dev
 ```
 
----
+Open the URL printed by Vite (normally `http://127.0.0.1:5173`). The dev server proxies API calls to `http://127.0.0.1:8000`; API documentation is at `http://127.0.0.1:8000/docs`. Start the backend from `backend/` so its relative storage paths resolve correctly.
 
-## 📖 Documentation
+### Explore the prototype
 
-See [engramtrace_technical_report.md](engramtrace_technical_report.md) for the full technical deep dive, including detailed data flow diagrams, file-by-file code reference, data storage schemas, and known limitations.
+1. Start a conversation in the chat console.
+2. Change topics to trigger consolidation, or use **Force Day Change** to consolidate and reorganize memory manually.
+3. Open **KB Studio** to inspect the HTML source or DOM graph. Saving an edit rebuilds its embeddings.
+4. Inspect the stage/session logs and trace set to follow the memory lifecycle.
 
----
-*EngramTrace: Building memory that grows, consolidates, and forgets just like you do.*
+The default generation model is `gemini-3.1-flash-lite-preview`; embeddings use `gemini-embedding-001` at 256 dimensions. Override `GEMINI_MODEL` and `GEMINI_EMBEDDING_MODEL` in `backend/.env` if needed. Model availability depends on your account. Rebuild memory embeddings when changing the embedding model.
+
+Conversations, knowledge, vectors, and stage archives are generated under `backend/src/memory/` and excluded from Git, along with credentials and local build output. Back up this directory before using the memory wipe controls.
+
+## Verification
+
+From the repository root with the Python environment active:
+
+```bash
+pip install -r backend/requirements-dev.txt
+python -m pytest backend/tests -q
+```
+
+From `frontend/`:
+
+```bash
+npm run lint
+npm run build
+```
+
+The tests use deterministic mock models and temporary directories. They check memory storage, retrieval, consolidation, session separation, and inference controls without contacting Gemini. GitHub Actions runs these checks on pushes and pull requests. Live model quality and benchmark accuracy remain unvalidated.
+
+## Source map
+
+| Path | Purpose |
+| --- | --- |
+| [Technical report](engramtrace_technical_report.md) | Design, implementation, evidence, and limitations |
+| [backend/src/core/brain.py](backend/src/core/brain.py) | Conversation orchestration, drift detection, and consolidation |
+| [backend/src/core/memory.py](backend/src/core/memory.py) | HTML storage, embeddings, and retrieval |
+| [backend/src/llm/langchain_client.py](backend/src/llm/langchain_client.py) | Gemini adapter and generation prompts |
+| [backend/api/routes](backend/api/routes) | Chat, memory, state, and session endpoints |
+| [backend/tests](backend/tests) | Isolated regression tests |
+| [frontend/src](frontend/src) | Chat console, KB editor, DOM graph, and inspector |

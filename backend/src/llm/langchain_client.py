@@ -1,10 +1,7 @@
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-# from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.messages import SystemMessage, HumanMessage
-from google.genai import types
 import time
-import threading
 from functools import wraps
 
 def trace_timing(func):
@@ -25,22 +22,15 @@ class LangChainClient:
     @trace_timing
     def __init__(self):
         self.model = ChatGoogleGenerativeAI(
-            model="gemini-3.1-flash-lite-preview",
-            #model="gemini-2.5-flash",
+            model=os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview"),
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.1
         )
         self.embedding_model = GoogleGenerativeAIEmbeddings(
-            model="gemini-embedding-001",
+            model=os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001"),
             google_api_key=os.getenv("GOOGLE_API_KEY"),
             output_dimensionality=256
         )
-        # # Local embedding model
-        # self.embedding_model = HuggingFaceEmbeddings(
-        #     model_name="jinaai/jina-embeddings-v5-text-small",
-        #     model_kwargs={'trust_remote_code': True},
-        #     encode_kwargs={'task': 'retrieval', 'truncate_dim': 256}
-        # )
 
     @trace_timing
     def _get_clean_response(self, system_prompt: str, human_prompt: str) -> str:
@@ -144,7 +134,6 @@ RULES:
         from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
         
         history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in history]) if history else ""
-        session_history_str = "\n".join([f"Q: {item['query']}\nA: {item['response']}" for item in session_history]) if session_history else ""
 
         system_prompt = f"""You are an intelligent conversational assistant. Answer the user's questions using your full general knowledge.
 

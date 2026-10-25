@@ -3,7 +3,6 @@ import os
 import numpy as np
 from datetime import datetime
 import time
-import threading
 from functools import wraps
 
 def trace_timing(func):
@@ -324,26 +323,10 @@ class Brain:
     def _update_query_vector(self, query_vec_raw, stage_log):
         """Modifies the raw query vector based on session history and stage state."""
         q_vec = np.array(query_vec_raw, dtype='float32')
-        if len(stage_log) < 1:
-            # # Stage changed: supplement query vector with the highest structural vector of the KB
-            # Considering query can be totally regardless of the KB, 
-            # I removed this part. 
-            # try:
-            #     root_tag = self.memory.soup.find(id="root") or self.memory.soup.find("body")
-            #     if root_tag and root_tag.get("id"):
-            #         with open(self.memory.structural_embeddings_path, "r") as f:
-            #             struc = json.load(f)
-            #             root_vec = struc.get(root_tag.get("id"))
-            #             if root_vec:
-            #                 q_vec = q_vec + np.array(root_vec, dtype='float32')
-            # except Exception:
-            pass
-        else:
-            # If not a new stage, weight the query vector and the last Q-A pair vector
-            if self.engram_trace.qa_vecs:
-                last_qa_vec = np.array(self.engram_trace.qa_vecs[-1], dtype='float32')
-                q_vec = q_vec * 0.7 + last_qa_vec * 0.3
-                
+        if stage_log and self.engram_trace.qa_vecs:
+            last_qa_vec = np.array(self.engram_trace.qa_vecs[-1], dtype='float32')
+            q_vec = q_vec * 0.7 + last_qa_vec * 0.3
+
         return q_vec.tolist()
 
     @trace_timing
@@ -382,6 +365,9 @@ class Brain:
                 else:
                     print(f"Topic Drift Detected ({similarity:.2f}). Consolidating Stage...")
                     self.consolidate_and_transition(preserve_trace=no_search)
+
+        # A transition may have cleared the stage; retrieval must use the new state.
+        stage_log = self.engram_trace._get_stage_log()
 
         # Update query vector with the current stage log for semantic search
         q_vec = self._update_query_vector(q_vec, stage_log)

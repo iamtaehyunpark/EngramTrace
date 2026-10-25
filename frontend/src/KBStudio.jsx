@@ -167,7 +167,7 @@ export default function KBStudio() {
         if (data.engram_trace) {
           setRetrievedNodeIds(new Set(data.engram_trace));
         }
-      } catch (err) {
+      } catch {
         setLoadError('Failed to load KB — backend may be down. Editor is empty.');
       }
     };
@@ -191,7 +191,7 @@ export default function KBStudio() {
     const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(markedNodes, rawEdges);
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
-  }, [htmlContent, activeTab, retrievedNodeIds]);
+  }, [htmlContent, activeTab, retrievedNodeIds, setNodes, setEdges]);
 
   const handleSave = useCallback(async () => {
     setSaveStatus('saving');
@@ -216,7 +216,7 @@ export default function KBStudio() {
         setSaveStatus('error');
         setTimeout(() => setSaveStatus('idle'), 3000);
       }
-    } catch (err) {
+    } catch {
       setSaveStatus('error');
       setTimeout(() => setSaveStatus('idle'), 3000);
     }

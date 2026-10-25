@@ -73,28 +73,34 @@ function App() {
     } catch (err) { console.error(err); }
   };
 
-  // Rehydrate historic dialogue memory array organically!
+  // Load independent state in parallel and ignore responses after unmount.
   useEffect(() => {
-    const fetchHistory = async () => {
+    let cancelled = false;
+    const initialize = async () => {
       try {
-        const res = await fetch('/state');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.session_log && data.session_log.length > 0) {
-            const rehydrated = [];
-            data.session_log.forEach(log => {
-              rehydrated.push({ role: 'user', text: log.query });
-              rehydrated.push({ role: 'bot', text: log.response });
-            });
-            setMessages(rehydrated);
-          } else {
-            setMessages([{ role: 'system', text: '[System Engine Online. Virtual Graph matrix successfully initialized...]' }]);
-          }
-        }
-      } catch (err) { }
+        const [sessionsRes, stateRes] = await Promise.all([
+          fetch('/sessions'), fetch('/state'),
+        ]);
+        if (!sessionsRes.ok || !stateRes.ok) throw new Error('Backend unavailable');
+        const [sessionData, stateData] = await Promise.all([
+          sessionsRes.json(), stateRes.json(),
+        ]);
+        if (cancelled) return;
+        setSessions(sessionData.sessions || []);
+        setActiveSession(sessionData.active_session || 'default');
+        const history = (stateData.session_log || []).flatMap(log => [
+          { role: 'user', text: log.query },
+          { role: 'bot', text: log.response },
+        ]);
+        setMessages(history.length ? history : [
+          { role: 'system', text: 'Memory console ready. Start a conversation.' },
+        ]);
+      } catch (err) {
+        if (!cancelled) setMessages([{ role: 'error', text: err.message }]);
+      }
     };
-    fetchSessions(); // Initialize sessions
-    fetchHistory();
+    initialize();
+    return () => { cancelled = true; };
   }, []);
 
   const handleSelectSession = async (session_id) => {
@@ -189,7 +195,7 @@ function App() {
 
     try {
       await fetch('/logs', { method: 'DELETE' });
-    } catch (e) { /* ignore cleanup errors */ }
+    } catch { /* Log cleanup is best effort. */ }
 
     const pollLogs = setInterval(async () => {
       try {
@@ -198,7 +204,7 @@ function App() {
           const data = await res.json();
           setServerLogs(data.logs || []);
         }
-      } catch (err) { }
+      } catch { /* Retry log polling on the next interval. */ }
     }, 400);
 
     try {
@@ -216,7 +222,7 @@ function App() {
       } else {
         throw new Error(data.response || 'Network error');
       }
-    } catch (err) {
+    } catch {
       clearInterval(pollLogs);
       setMessages(prev => [...prev, { role: 'error', text: 'CRITICAL: Extrapolator Bridge Dropped (API check required)' }]);
     } finally {
