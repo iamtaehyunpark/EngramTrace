@@ -1,8 +1,10 @@
-# EngramTrace: Structured Long-Term Memory for Conversational Language Models
+# EngramTrace: Implementation Companion
 
-**Final technical report**
+**[Read the final research report (PDF)](EngramTrace.pdf)**
 
-**Original design:** April 19, 2026 · **Publication revision:** October 25, 2026
+This document is a guide to the current implementation and its regression checks. The PDF above is the final research report.
+
+**Implementation documentation revised:** October 25, 2026
 
 **[Repository](https://github.com/iamtaehyunpark/EngramTrace)** · **[Project overview and setup](README.md)**
 
@@ -10,7 +12,7 @@
 
 EngramTrace explores a question: can an explicit, editable document hierarchy serve as persistent memory for a conversational language model? The prototype stores knowledge in an HTML document, indexes paragraphs with embeddings informed by their structural ancestors, and retrieves surrounding HTML fragments for response generation. Conversations first enter a short-term stage buffer. Topic drift or a buffer limit triggers consolidation into the persistent document. A separate reorganization pass can deduplicate and restructure the knowledge base.
 
-The contribution is an inspectable implementation of this memory lifecycle, including a chat console, HTML editor, graph visualization, and session logs. Deterministic tests exercise the core storage and orchestration paths. No validated benchmark results are included, so this report describes the system's mechanisms and engineering tradeoffs without claiming improved answer accuracy or biological fidelity.
+The contribution is an inspectable implementation of this memory lifecycle, including a chat console, HTML editor, graph visualization, and session logs. Deterministic tests exercise the core storage and orchestration paths. The final research report includes preliminary MuSiQue results. This companion describes the current implementation and engineering tradeoffs; its mock tests do not reproduce that evaluation or establish biological fidelity.
 
 ## Contents
 
@@ -218,9 +220,8 @@ Publication checks passed locally: **10 backend tests**, frontend lint, and fron
 
 GitHub Actions installs the backend dependencies and NLTK corpora, runs the tests, and checks frontend lint and production compilation. These checks validate selected implementation behavior. They do not measure retrieval relevance, answer correctness, live API compatibility, or long-horizon memory retention.
 
-**No validated benchmark accuracy, latency, cost, or baseline comparison is included in this release.** Earlier documentation referred to a separate LongMemEval harness and invalid evaluation output. That harness, dataset, and result artifacts are not present here, so those references cannot serve as reproducible evidence and no performance claim is made from them.
-
-A future evaluation should publish the harness, dataset version, model configuration, prompts, state-reset protocol, raw outputs, and scoring method. Useful comparisons would isolate flat versus hierarchical embeddings, keyword supplementation, and consolidation, while measuring answer accuracy, retrieval relevance, token usage, API calls, and merge-related information loss.
+**Research evaluation:** the [final report](EngramTrace.pdf) describes a preliminary MuSiQue study. The evaluation harness, dataset, and raw outputs for that study are not included in this code release, and the publication checks above do not independently reproduce its findings. This companion reports implementation verification separately from the research evaluation.
+A reproducible evaluation release should publish the harness, dataset version, model configuration, prompts, state-reset protocol, raw outputs, and scoring method. Useful comparisons would isolate flat versus hierarchical embeddings, keyword supplementation, and consolidation, while measuring answer accuracy, retrieval relevance, token usage, API calls, and merge-related information loss.
 
 ## 8. Limitations and future work
 
@@ -235,7 +236,7 @@ The main limits are structural and operational:
 - **Synchronous external calls:** model operations block request handling, responses are not streamed, and retry/error behavior is limited.
 - **Document-scale cost:** the full knowledge base is parsed in memory, and reorganization rebuilds its hierarchy and vectors. No scale or cost envelope has been established.
 - **Prompt-dependent hierarchy:** no deterministic heading-to-section normalization is applied. The active path relies on generated nesting.
-- **Incomplete evidence:** mock tests cannot establish live model quality or a benefit over simpler retrieval systems.
+- **Verification boundary:** mock tests cannot establish live model quality or independently confirm the preliminary findings in the final report.
 
 The most useful next steps are a reproducible evaluation harness, transactional storage with rollback, robust ID and cache invalidation rules, and explicit concurrency/session isolation. Larger-scale storage, streaming, and alternative model providers should follow evidence about the core memory design.
 
@@ -251,4 +252,4 @@ For implementation review, start with:
 4. [API routes](backend/api/routes) and [frontend components](frontend/src): the research console's controls and state inspection.
 5. [Regression tests](backend/tests): executable examples of the verified behaviors.
 
-This report documents an implemented memory architecture and its current verification boundary. Establishing its effectiveness remains an empirical research task.
+This companion documents the current code and its verification boundary. See the [final research report](EngramTrace.pdf) for the original research narrative and preliminary evaluation.

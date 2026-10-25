@@ -4,9 +4,9 @@
 
 EngramTrace is a research prototype that stores conversational knowledge in an editable HTML tree. It retrieves relevant paragraphs with their surrounding structure and consolidates conversations into that tree when the topic changes, without updating model weights.
 
-**[Read the final technical report →](engramtrace_technical_report.md)**
+**[Read the final report (PDF) →](EngramTrace.pdf)**
 
-The report explains the research question, architecture, memory lifecycle, implementation, verification, and limitations. It can be read on GitHub without installing or running the project.
+The final report by **Taehyun Park, University of Wisconsin–Madison**, presents the research motivation, methodology, preliminary MuSiQue evaluation, and discussion. It can be read on GitHub without installing or running the project. See the [implementation companion](engramtrace_technical_report.md) for a guide to the current source code, setup, and regression checks.
 
 ## Project at a glance
 
@@ -15,7 +15,7 @@ The report explains the research question, architecture, memory lifecycle, imple
 - **Incremental consolidation:** topic drift or a 15-turn buffer triggers a merge into persistent memory.
 - **Session continuity:** separate conversation logs share a common knowledge base.
 
-This repository contains the implementation and report. It does **not** include validated benchmark scores or establish an accuracy advantage over other memory systems. The application is a local research console with a shared engine and no authentication.
+This repository contains the implementation and final report. The report presents preliminary evaluation; the evaluation harness, dataset, and raw result artifacts are not included in this code release. The application is a local research console with a shared engine and no authentication.
 
 ```mermaid
 flowchart LR
@@ -81,13 +81,14 @@ npm run lint
 npm run build
 ```
 
-The tests use deterministic mock models and temporary directories. They check memory storage, retrieval, consolidation, session separation, and inference controls without contacting Gemini. GitHub Actions runs these checks on pushes and pull requests. Live model quality and benchmark accuracy remain unvalidated.
+The tests use deterministic mock models and temporary directories. They check memory storage, retrieval, consolidation, session separation, and inference controls without contacting Gemini. GitHub Actions runs these checks on pushes and pull requests. These checks do not reproduce the benchmark evaluation described in the final report.
 
 ## Source map
 
 | Path | Purpose |
 | --- | --- |
-| [Technical report](engramtrace_technical_report.md) | Design, implementation, evidence, and limitations |
+| [Final report (PDF)](EngramTrace.pdf) | Original research report by Taehyun Park |
+| [Implementation companion](engramtrace_technical_report.md) | Current code, regression checks, and engineering limitations |
 | [backend/src/core/brain.py](backend/src/core/brain.py) | Conversation orchestration, drift detection, and consolidation |
 | [backend/src/core/memory.py](backend/src/core/memory.py) | HTML storage, embeddings, and retrieval |
 | [backend/src/llm/langchain_client.py](backend/src/llm/langchain_client.py) | Gemini adapter and generation prompts |
